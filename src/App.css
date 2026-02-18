@@ -1,0 +1,6 @@
+/* App specific styles */
+.app-container {
+  overflow: hidden;
+  background: radial-gradient(circle at top right, rgba(99, 102, 241, 0.1), transparent),
+    radial-gradient(circle at bottom left, rgba(34, 211, 238, 0.05), transparent);
+}
