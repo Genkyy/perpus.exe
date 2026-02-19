@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Book Detail Modal - Library System</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#137fec",
+                        "background-light": "#f6f7f8",
+                        "background-dark": "#101922",
+                    },
+                    fontFamily: {
+                        "display": ["Inter"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-[#111418] antialiased min-h-screen flex items-center justify-center p-4">
+<!-- Modal Overlay Backdrop -->
+<div class="fixed inset-0 bg-black/40 backdrop-blur-sm z-0"></div>
+<!-- Main Modal Container -->
+<div class="relative z-10 w-full max-w-[1000px] bg-white dark:bg-[#1a2632] shadow-2xl rounded-xl overflow-hidden flex flex-col md:flex-row border border-[#dbe0e6] dark:border-[#2d3a4a]">
+<!-- Left Sidebar: Book Cover & Status -->
+<div class="w-full md:w-[320px] bg-[#f8fafc] dark:bg-[#15202b] p-8 flex flex-col items-center gap-6 border-r border-[#dbe0e6] dark:border-[#2d3a4a]">
+<div class="relative group w-full">
+<div class="w-full aspect-[3/4] rounded-lg shadow-lg overflow-hidden bg-white border border-[#dbe0e6] dark:border-[#2d3a4a]">
+<div class="w-full h-full bg-center bg-no-repeat bg-cover" data-alt="Modern architectural building with minimalist concrete design" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuB8DSPTGoBeBV0Zw_LkU9E3IUF5HZK6EBVzxc9hbAZBH4IzYr3xJIjjNiCPmx8xNAE2Nsfx-SvW6GaRCny3zynJp6Pr48BTdLelDiYS9gdemZ5RJSX3JPJyAwQgUQ8XyOF9SxdBINkxtD5jpydd5qz_shHgZVS8Oa63BKrRuKD5XtFfEYm7Nvck1aKjIXvnTs7GTyeyDaEfkAc1qwn8iKVC-24j5_eh8Y2kjskq1m9pMdX2RZ5saaMFiO4TsMDaYe3Fccyef4XeKfE");'>
+</div>
+</div>
+<!-- Status Badge Overlay -->
+<div class="absolute top-4 right-4">
+<span class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary text-white text-xs font-bold uppercase tracking-wider shadow-md">
+<span class="material-symbols-outlined text-[16px] fill-1">check_circle</span>
+                        Tersedia
+                    </span>
+</div>
+</div>
+<div class="w-full space-y-4">
+<div class="p-4 rounded-lg bg-white dark:bg-[#1a2632] border border-[#dbe0e6] dark:border-[#2d3a4a]">
+<p class="text-[#617589] text-xs font-medium uppercase tracking-widest mb-1">Lokasi Rak</p>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">shelves</span>
+<p class="text-[#111418] dark:text-white font-semibold">Arsitektur A1-04</p>
+</div>
+<p class="text-[#617589] text-xs mt-1">Lantai 2, Sayap Barat</p>
+</div>
+<!-- Action Button for Desktop Only (Secondary) -->
+<button class="w-full flex items-center justify-center gap-2 py-3 rounded-lg border-2 border-primary/20 text-primary font-bold hover:bg-primary/5 transition-colors">
+<span class="material-symbols-outlined">share</span>
+                    Bagikan Katalog
+                </button>
+</div>
+</div>
+<!-- Right Content: Metadata & Details -->
+<div class="flex-1 flex flex-col">
+<!-- Header Section -->
+<div class="p-8 pb-4">
+<div class="flex flex-col gap-2">
+<h1 class="text-[#111418] dark:text-white text-3xl font-black leading-tight tracking-tight">
+                        Beyond the Horizon: A Guide to Modern Architecture
+                    </h1>
+<div class="flex items-center gap-2">
+<p class="text-[#617589] text-lg font-medium">Penulis: <span class="text-primary">Arch. Jonathan Miller</span></p>
+<span class="text-[#dbe0e6]">•</span>
+<p class="text-[#617589] text-lg">2023</p>
+</div>
+</div>
+</div>
+<!-- Stats/Metrics Row -->
+<div class="px-8 grid grid-cols-2 gap-4">
+<div class="flex flex-col gap-2 rounded-xl p-5 border border-[#dbe0e6] dark:border-[#2d3a4a] bg-primary/5">
+<div class="flex items-center justify-between">
+<p class="text-[#111418] dark:text-white text-sm font-semibold">Stok Eksemplar</p>
+<span class="material-symbols-outlined text-primary">inventory_2</span>
+</div>
+<div class="flex items-baseline gap-1">
+<p class="text-primary tracking-tight text-3xl font-black">12</p>
+<p class="text-[#617589] text-sm font-medium">/ 15 Total</p>
+</div>
+<div class="w-full bg-[#dbe0e6] h-1.5 rounded-full mt-2">
+<div class="bg-primary h-1.5 rounded-full" style="width: 80%"></div>
+</div>
+</div>
+<div class="flex flex-col gap-2 rounded-xl p-5 border border-[#dbe0e6] dark:border-[#2d3a4a] bg-primary/5">
+<div class="flex items-center justify-between">
+<p class="text-[#111418] dark:text-white text-sm font-semibold">Popularity Metric</p>
+<span class="material-symbols-outlined text-primary">trending_up</span>
+</div>
+<p class="text-primary tracking-tight text-3xl font-black">84</p>
+<p class="text-[#617589] text-sm font-medium">Pinjaman (Tahun Ini)</p>
+</div>
+</div>
+<!-- Metadata Grid -->
+<div class="p-8 space-y-6">
+<div>
+<h2 class="text-[#111418] dark:text-white text-sm font-bold uppercase tracking-widest mb-4 flex items-center gap-2">
+<span class="w-8 h-[1px] bg-primary"></span>
+                        Informasi Detail Buku
+                    </h2>
+<div class="grid grid-cols-2 gap-x-8 gap-y-4">
+<div class="flex flex-col border-b border-[#dbe0e6] dark:border-[#2d3a4a] pb-2">
+<p class="text-[#617589] text-xs font-medium uppercase">Kode Buku</p>
+<p class="text-[#111418] dark:text-white text-sm font-bold">ARC-2023-001</p>
+</div>
+<div class="flex flex-col border-b border-[#dbe0e6] dark:border-[#2d3a4a] pb-2">
+<p class="text-[#617589] text-xs font-medium uppercase">ISBN</p>
+<p class="text-[#111418] dark:text-white text-sm font-bold">978-3-16-148410-0</p>
+</div>
+<div class="flex flex-col border-b border-[#dbe0e6] dark:border-[#2d3a4a] pb-2">
+<p class="text-[#617589] text-xs font-medium uppercase">Penerbit</p>
+<p class="text-[#111418] dark:text-white text-sm font-bold">Horizon Press</p>
+</div>
+<div class="flex flex-col border-b border-[#dbe0e6] dark:border-[#2d3a4a] pb-2">
+<p class="text-[#617589] text-xs font-medium uppercase">Kategori</p>
+<p class="text-[#111418] dark:text-white text-sm font-bold">Arsitektur &amp; Desain</p>
+</div>
+</div>
+</div>
+<!-- Borrower Info (Conditional Style Example) -->
+<!-- Currently status is 'Tersedia', so this section could be hidden or show historical data. 
+                     Request mentioned showing current borrower if status is 'Dipinjam'. 
+                     I'll show it as a subtle history or 'Last Borrowed' for this view. -->
+<div class="rounded-lg bg-[#f0f9ff] dark:bg-[#1a3a5c]/30 p-4 border border-primary/10">
+<div class="flex items-start gap-3">
+<span class="material-symbols-outlined text-primary mt-1">info</span>
+<div>
+<p class="text-[#111418] dark:text-white text-sm font-bold">Riwayat Peminjaman Terakhir</p>
+<p class="text-[#617589] text-sm">Dipinjam oleh <span class="text-[#111418] dark:text-white font-medium">Budi Santoso</span> pada 12 Okt 2023. Telah dikembalikan tepat waktu.</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Footer Actions -->
+<div class="mt-auto p-6 bg-[#f8fafc] dark:bg-[#15202b] border-t border-[#dbe0e6] dark:border-[#2d3a4a] flex justify-end gap-3">
+<button class="px-6 py-2.5 rounded-lg border border-[#dbe0e6] dark:border-[#2d3a4a] text-[#111418] dark:text-white text-sm font-bold hover:bg-[#f1f5f9] transition-colors">
+                    Tutup
+                </button>
+<button class="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-primary text-white text-sm font-bold hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all">
+<span class="material-symbols-outlined text-[20px]">edit</span>
+                    Edit Data
+                </button>
+</div>
+</div>
+</div>
+</body></html>

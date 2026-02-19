@@ -93,14 +93,10 @@ pub async fn delete_book(pool: State<'_, SqlitePool>, id: i64) -> Result<(), Str
 // Members Commands
 #[tauri::command]
 pub async fn get_members(pool: State<'_, SqlitePool>) -> Result<Vec<Member>, String> {
-    sqlx::query_as::<_, Member>(
-        "SELECT * FROM members 
-WHERE status != 'Nonaktif' 
-ORDER BY name ASC",
-    )
-    .fetch_all(&*pool)
-    .await
-    .map_err(|e| e.to_string())
+    sqlx::query_as::<_, Member>("SELECT * FROM members ORDER BY name ASC")
+        .fetch_all(&*pool)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -121,9 +117,12 @@ pub async fn get_book_loan_count_year(
 
 #[tauri::command]
 pub async fn add_member(pool: State<'_, SqlitePool>, member: NewMember) -> Result<i64, String> {
-    let member_code = generate_member_code(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    let code = match member.member_code {
+        Some(c) if !c.trim().is_empty() => c,
+        _ => internal_generate_member_code(&pool)
+            .await
+            .map_err(|e| e.to_string())?,
+    };
 
     let res = sqlx::query(
         r#"
@@ -132,13 +131,13 @@ pub async fn add_member(pool: State<'_, SqlitePool>, member: NewMember) -> Resul
         VALUES (?, ?, ?, ?, ?, ?, ?)
         "#,
     )
-    .bind(member_code)
+    .bind(code)
     .bind(member.name)
     .bind(member.email)
     .bind(member.kelas)
     .bind(member.phone)
     .bind(member.jenis_kelamin)
-    .bind(member.status)
+    .bind(member.status.unwrap_or_else(|| "Aktif".to_string()))
     .execute(&*pool)
     .await
     .map_err(|e| e.to_string())?;
@@ -161,14 +160,21 @@ pub async fn borrow_book(
         .bind(book_id)
         .fetch_one(&mut *tx)
         .await
-        .map_err(|_| "Book not found".to_string())?;
+        .map_err(|_| "Buku tidak ditemukan".to_string())?;
 
     if book.available_copy <= 0 {
         return Err("Stok buku habis".to_string());
     }
 
-    if book.status.as_deref().unwrap_or("Tersedia") == "Tidak Tersedia" {
-        return Err("Buku sedang tidak tersedia".to_string());
+    // Check member status
+    let member_status: String = sqlx::query_scalar("SELECT status FROM members WHERE id = ?")
+        .bind(member_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|_| "Member tidak ditemukan".to_string())?;
+
+    if member_status == "Nonaktif" {
+        return Err("Anggota berstatus Nonaktif tidak dapat meminjam buku".to_string());
     }
 
     // Create loan record
@@ -184,8 +190,8 @@ pub async fn borrow_book(
         .await
         .map_err(|e| e.to_string())?;
 
-    // Update book status
-    sqlx::query("UPDATE books SET available_copy = available_copy - 1 WHERE id = ?")
+    // Update book status and stock
+    sqlx::query("UPDATE books SET available_copy = available_copy - 1, status = CASE WHEN available_copy - 1 = 0 THEN 'Dipinjam' ELSE status END WHERE id = ?")
         .bind(book_id)
         .execute(&mut *tx)
         .await
@@ -228,11 +234,13 @@ pub async fn return_book(pool: State<'_, SqlitePool>, loan_id: i64) -> Result<()
     .await
     .map_err(|e| e.to_string())?;
 
-    sqlx::query("UPDATE books SET available_copy = available_copy + 1 WHERE id = ?")
-        .bind(loan.book_id)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| e.to_string())?;
+    sqlx::query(
+        "UPDATE books SET available_copy = available_copy + 1, status = 'Tersedia' WHERE id = ?",
+    )
+    .bind(loan.book_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?;
 
     tx.commit().await.map_err(|e| e.to_string())?;
 
@@ -349,6 +357,8 @@ pub struct Stats {
     pub total_members: i64,
     pub active_loans: i64,
     pub overdue_loans: i64,
+    pub monthly_new_members: i64,
+    pub total_loans_count: i64,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
@@ -367,6 +377,7 @@ pub struct MemberLoanInfo {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct MemberStats {
     pub total_loans_30_days: i64,
+    pub total_loans_1_year: i64,
     pub active_loans: i64,
     pub overdue_loans: i64,
     pub total_fines: i64,
@@ -380,11 +391,12 @@ pub async fn get_stats(pool: tauri::State<'_, sqlx::SqlitePool>) -> Result<Stats
             .await
             .map_err(|e| e.to_string())?;
 
-    let total_members: i64 =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM members WHERE status != 'Nonaktif'")
-            .fetch_one(&*pool)
-            .await
-            .map_err(|e| e.to_string())?;
+    let total_members: i64 = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM members WHERE status = 'Aktif' OR status IS NULL",
+    )
+    .fetch_one(&*pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
     let active_loans: i64 =
         sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM loans l JOIN books b ON l.book_id = b.id WHERE l.status = 'borrowed' AND b.deleted_at IS NULL")
@@ -399,11 +411,25 @@ pub async fn get_stats(pool: tauri::State<'_, sqlx::SqlitePool>) -> Result<Stats
     .await
     .map_err(|e| e.to_string())?;
 
+    let monthly_new_members: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM members WHERE joined_at >= date('now', 'start of month')",
+    )
+    .fetch_one(&*pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let total_loans_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM loans")
+        .fetch_one(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
     Ok(Stats {
         total_books,
         total_members,
         active_loans,
         overdue_loans,
+        monthly_new_members,
+        total_loans_count,
     })
 }
 
@@ -479,11 +505,13 @@ pub struct LoanDetail {
     pub book_cover: Option<String>,
     pub member_name: String,
     pub member_code: String,
+    pub member_kelas: Option<String>,
     pub loan_date: chrono::DateTime<chrono::Utc>,
     pub due_date: chrono::DateTime<chrono::Utc>,
     pub status: String,
     pub fine_amount: i64,
     pub member_active_loans: i64,
+    pub member_status: Option<String>,
 }
 
 #[tauri::command]
@@ -495,7 +523,7 @@ pub async fn find_active_loan(
         SELECT 
             l.id, l.book_id, l.member_id,
             b.title as book_title, b.isbn as book_isbn, b.cover as book_cover,
-            m.name as member_name, m.member_code,
+            m.name as member_name, m.member_code, m.status as member_status, m.kelas as member_kelas,
             l.loan_date, l.due_date, l.status,
             CAST(
                 MAX(0, (julianday('now') - julianday(l.due_date))) * 1000 
@@ -536,7 +564,7 @@ pub async fn get_overdue_loans(pool: State<'_, SqlitePool>) -> Result<Vec<LoanDe
         SELECT 
             l.id, l.book_id, l.member_id,
             b.title as book_title, b.isbn as book_isbn, b.cover as book_cover,
-            m.name as member_name, m.member_code,
+            m.name as member_name, m.member_code, m.kelas as member_kelas,
             l.loan_date, l.due_date, l.status,
             CAST(
                 MAX(0, (julianday('now') - julianday(l.due_date))) * 1000 
@@ -629,6 +657,19 @@ pub async fn get_member_stats(
     .await
     .map_err(|e| e.to_string())?;
 
+    let total_loans_1_year: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*) 
+        FROM loans 
+        WHERE member_id = ? 
+        AND loan_date >= datetime('now', '-1 year')
+        "#,
+    )
+    .bind(member_id)
+    .fetch_one(&*pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
     let total_fines: i64 = sqlx::query_scalar(
         r#"
         SELECT COALESCE(SUM(
@@ -648,6 +689,7 @@ pub async fn get_member_stats(
 
     Ok(MemberStats {
         total_loans_30_days,
+        total_loans_1_year,
         active_loans,
         overdue_loans,
         total_fines,
@@ -729,10 +771,64 @@ pub async fn update_member(pool: State<'_, SqlitePool>, member: Member) -> Resul
     Ok(())
 }
 
-async fn generate_member_code(pool: &SqlitePool) -> Result<String, sqlx::Error> {
-    let last_id: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(id), 0) FROM members")
-        .fetch_one(pool)
-        .await?;
+#[tauri::command]
+pub async fn generate_member_code(pool: State<'_, SqlitePool>) -> Result<String, String> {
+    internal_generate_member_code(&pool)
+        .await
+        .map_err(|e| e.to_string())
+}
 
-    Ok(format!("MBR-{:04}", last_id + 1))
+async fn internal_generate_member_code(pool: &SqlitePool) -> Result<String, sqlx::Error> {
+    let current_year = chrono::Utc::now().format("%Y").to_string();
+    let last_code: Option<String> = sqlx::query_scalar(
+        "SELECT member_code FROM members WHERE member_code LIKE ? ORDER BY member_code DESC LIMIT 1"
+    )
+    .bind(format!("MBR-{}%", current_year))
+    .fetch_optional(pool)
+    .await?;
+
+    let next_num = match last_code {
+        Some(code) => {
+            let parts: Vec<&str> = code.split('-').collect();
+            if parts.len() == 3 {
+                parts[2].parse::<i64>().unwrap_or(0) + 1
+            } else {
+                1
+            }
+        }
+        None => 1,
+    };
+
+    Ok(format!("MBR-{}-{:04}", current_year, next_num))
+}
+
+#[tauri::command]
+pub async fn get_book_borrowers(
+    pool: State<'_, SqlitePool>,
+    book_id: i64,
+) -> Result<Vec<LoanDetail>, String> {
+    let loans = sqlx::query_as::<_, LoanDetail>(
+        r#"
+        SELECT 
+            l.id, l.book_id, l.member_id,
+            b.title as book_title, b.isbn as book_isbn, b.cover as book_cover,
+            m.name as member_name, m.member_code, m.status as member_status, m.kelas as member_kelas,
+            l.loan_date, l.due_date, l.status,
+            CAST(
+                MAX(0, (julianday('now') - julianday(l.due_date))) * 1000 
+            AS INTEGER) as fine_amount,
+            (SELECT COUNT(*) FROM loans WHERE member_id = m.id AND status = 'borrowed') as member_active_loans
+        FROM loans l
+        JOIN books b ON l.book_id = b.id
+        JOIN members m ON l.member_id = m.id
+        WHERE l.book_id = ? AND l.status = 'borrowed'
+        ORDER BY l.loan_date DESC
+        "#
+    )
+    .bind(book_id)
+    .fetch_all(&*pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(loans)
 }

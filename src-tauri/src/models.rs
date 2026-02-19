@@ -66,6 +66,7 @@ pub struct User {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NewMember {
+    pub member_code: Option<String>,
     pub name: String,
     pub email: Option<String>,
     pub phone: Option<String>,

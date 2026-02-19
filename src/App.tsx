@@ -35,15 +35,6 @@ interface Member {
   joined_at?: string;
 }
 
-interface Loan {
-  id: number;
-  book_title: string;
-  member_name: string;
-  loan_date: string;
-  due_date: string;
-  status: string;
-  fine_amount: number;
-}
 
 interface User {
   id: number;
@@ -61,23 +52,34 @@ interface LoanDetail {
   book_cover?: string;
   member_name: string;
   member_code: string;
+  member_kelas?: string;
   loan_date: string;
   due_date: string;
   status: string;
   fine_amount: number;
   member_active_loans: number;
+  member_status?: string;
 }
 
 // Helper to handle invoke safely in browser for preview
 const safeInvoke = async (cmd: string, args: any = {}): Promise<any> => {
-  if (window.hasOwnProperty("__TAURI_INTERNALS__")) {
+  if (window.hasOwnProperty("__TAURI_INTERNALS__") || window.hasOwnProperty("__TAURI__")) {
     return await invoke(cmd, args);
   }
 
   // Mock data for Browser Preview
   console.warn(`Browser Preview: Mocking Tauri command "${cmd}"`);
+
+  if (cmd === "login") {
+    if (args.username === "admin" && args.password === "admin123") {
+      return { id: 1, username: "admin", name: "Administrator", role: "admin" };
+    } else {
+      throw "Username atau password salah";
+    }
+  }
+
   const mocks: any = {
-    "login": { id: 1, username: "admin", name: "Administrator", role: "admin" },
+    "get_book_borrowers": [],
     "get_stats": { total_books: 12450, total_members: 892, active_loans: 45, overdue_loans: 12 },
     "get_books": [
       { id: 1, title: "Laskar Pelangi", author: "Andrea Hirata", isbn: "978-979-3062-79-1", category: "Fiksi", total_copy: 8, available_copy: 5 },
@@ -97,23 +99,16 @@ const safeInvoke = async (cmd: string, args: any = {}): Promise<any> => {
       { id: "M-1", title: "Sarah Williams", description: "Bergabung sebagai anggota baru", time: new Date(Date.now() - 3600000).toISOString(), type_name: "member" }
     ],
     "get_weekly_circulation": [
-      { day: "Minggu", count: 12 },
-      { day: "Senin", count: 25 },
-      { day: "Selasa", count: 18 },
-      { day: "Rabu", count: 32 },
-      { day: "Kamis", count: 45 },
-      { day: "Jumat", count: 28 },
-      { day: "Sabtu", count: 15 }
-    ]
+      { day: "Minggu", count: 12 }, { day: "Senin", count: 25 }, { day: "Selasa", count: 18 }, { day: "Rabu", count: 32 }, { day: "Kamis", count: 45 }, { day: "Jumat", count: 28 }, { day: "Sabtu", count: 15 }
+    ],
+    "get_member_loans": [
+      { id: 1, book_title: "Atomic Habits", member_name: "Michael Chen", member_code: "MBR001", loan_date: new Date().toISOString(), due_date: new Date(Date.now() + 604800000).toISOString(), status: "borrowed", fine_amount: 0, member_status: "Aktif" }
+    ],
+    "find_active_loan": [
+      { id: 1, book_title: "Atomic Habits", book_isbn: "978-052-5559-47-4", member_name: "Michael Chen", member_code: "MBR001", member_status: "Aktif", loan_date: new Date().toISOString(), due_date: new Date(Date.now() + 604800000).toISOString(), status: "borrowed", fine_amount: 0, member_active_loans: 1 }
+    ],
+    "get_overdue_loans": []
   };
-
-  if (cmd === "login") {
-    if (args.username === "admin" && args.password === "admin123") {
-      return mocks.login;
-    } else {
-      throw "Username atau password salah";
-    }
-  }
 
   return mocks[cmd] || (cmd.startsWith("add_") ? 1 : null);
 };
@@ -123,7 +118,6 @@ function App() {
   const [view, setView] = useState("dashboard");
   const [books, setBooks] = useState<Book[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
-  const [loans, setLoans] = useState<Loan[]>([]);
 
   useEffect(() => {
     if (user) {
@@ -139,9 +133,6 @@ function App() {
       } else if (view === "members") {
         const data = await safeInvoke("get_members");
         setMembers(data);
-      } else if (view === "loans") {
-        const data = await safeInvoke("get_active_loans");
-        setLoans(data);
       }
     } catch (err) {
       console.error(err);
@@ -242,7 +233,6 @@ function App() {
             )}
             {view === "loans" && (
               <LoansView
-                loans={loans}
                 onRefresh={loadData}
               />
             )}
@@ -463,8 +453,20 @@ function ReturnsView() {
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', borderTop: '1px solid #f1f5f9', paddingTop: '32px' }}>
                       <div>
-                        <p style={{ fontSize: '0.625rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', marginBottom: '4px' }}>Peminjam</p>
-                        <p style={{ fontWeight: 700, color: '#1e293b' }}>{selectedLoan.member_name}</p>
+                        <p style={{ fontSize: '0.625rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.05em', marginBottom: '4px' }}>Peminjam</p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <p style={{ fontWeight: 700, color: '#1e293b', margin: 0 }}>{selectedLoan.member_name}</p>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            fontSize: '0.625rem',
+                            fontWeight: 800,
+                            backgroundColor: selectedLoan.member_status === 'Aktif' || selectedLoan.member_status === 'Active' ? '#dcfce7' : '#fee2e2',
+                            color: selectedLoan.member_status === 'Aktif' || selectedLoan.member_status === 'Active' ? '#16a34a' : '#ef4444'
+                          }}>
+                            {selectedLoan.member_status || 'Unknown'}
+                          </span>
+                        </div>
                         <p style={{ fontSize: '0.75rem', color: '#64748b' }}>Code: {selectedLoan.member_code}</p>
                       </div>
                       <div>
@@ -585,7 +587,15 @@ function ReturnsView() {
                 >
                   <p style={{ fontWeight: 800, fontSize: '0.813rem', margin: '0 0 6px', color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{loan.book_title}</p>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', alignItems: 'center' }}>
-                    <span style={{ color: '#64748b', fontWeight: 600 }}>{loan.member_name}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ color: '#64748b', fontWeight: 600 }}>{loan.member_name}</span>
+                      <span style={{
+                        width: '6px',
+                        height: '6px',
+                        borderRadius: '50%',
+                        backgroundColor: loan.member_status === 'Aktif' || loan.member_status === 'Active' ? '#10b981' : '#ef4444'
+                      }}></span>
+                    </div>
                     <span style={{ color: '#ef4444', fontWeight: 800, backgroundColor: '#fee2e2', padding: '2px 6px', borderRadius: '4px' }}>+{getDaysLate(loan.due_date)} hr</span>
                   </div>
                 </div>
@@ -620,21 +630,9 @@ function ReturnsView() {
           )}
         </div>
       </div>
-
-      <div style={{ padding: '24px', backgroundColor: 'rgba(19, 127, 236, 0.05)', borderRadius: '16px', border: '1px solid rgba(19, 127, 236, 0.2)' }}>
-        <div style={{ display: 'flex', gap: '12px', marginBottom: '8px' }}>
-          <span className="material-symbols-outlined" style={{ color: 'var(--primary)' }}>lightbulb</span>
-          <h5 style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--primary)' }}>Tips Cepat</h5>
-        </div>
-        <p style={{ fontSize: '0.75rem', color: '#475569', lineHeight: '1.5' }}>
-          Gunakan tombol <strong>F1</strong> pada keyboard untuk kembali fokus ke kolom pencarian ID Buku.
-        </p>
-      </div>
     </div>
   );
 }
-
-/* eslint-enable jsx-a11y/no-inline-styles */
 
 function LoginView({ onLogin }: { onLogin: (u: User) => void }) {
   const [username, setUsername] = useState("");
@@ -765,7 +763,7 @@ function LoginView({ onLogin }: { onLogin: (u: User) => void }) {
 }
 
 function DashboardView({ setView }: { setView: (v: string) => void }) {
-  const [stats, setStats] = useState({ total_books: 0, total_members: 0, active_loans: 0, overdue_loans: 0 });
+  const [stats, setStats] = useState({ total_books: 0, total_members: 0, active_loans: 0, overdue_loans: 0, monthly_new_members: 0, total_loans_count: 0 });
   const [categories, setCategories] = useState<any[]>([]);
   const [topBooks, setTopBooks] = useState<any[]>([]);
   const [memberStats, setMemberStats] = useState<any[]>([]);
@@ -783,7 +781,7 @@ function DashboardView({ setView }: { setView: (v: string) => void }) {
         safeInvoke("get_most_borrowed_books"),
         safeInvoke("get_member_activity_stats")
       ]);
-      setStats(s || { total_books: 0, total_members: 0, active_loans: 0, overdue_loans: 0 });
+      setStats(s || { total_books: 0, total_members: 0, active_loans: 0, overdue_loans: 0, monthly_new_members: 0, total_loans_count: 0 });
       setCategories(cat || []);
       setTopBooks(books || []);
       setMemberStats(members || []);
@@ -818,7 +816,7 @@ function DashboardView({ setView }: { setView: (v: string) => void }) {
     }
   };
 
-  const totalLoans = categories.reduce((sum, cat) => sum + cat.count, 0);
+  const totalLoans = categories.length > 0 ? categories.reduce((sum, cat) => sum + (cat.count || 0), 0) : 0;
   const categoryColors = ['#137fec', '#f59e0b', '#10b981', '#6366f1', '#94a3b8'];
 
   const handleExportPDF = async () => {
@@ -838,10 +836,10 @@ function DashboardView({ setView }: { setView: (v: string) => void }) {
       {/* Header */}
       <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '32px', gap: '16px' }}>
         <div>
-          <h1 style={{ fontSize: '30px', fontWeight: 900, marginBottom: '4px', letterSpacing: '-0.02em' }}>Reports & Analytics</h1>
+          <h1 style={{ fontSize: '30px', fontWeight: 900, marginBottom: '4px', letterSpacing: '-0.02em' }}>Dashboard</h1>
           <p style={{ color: '#617589', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>schedule</span>
-            Last comprehensive update: {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} - {new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+            Pembaruan terakhir pada: {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} - {new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -884,13 +882,13 @@ function DashboardView({ setView }: { setView: (v: string) => void }) {
           onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)'; }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <p style={{ fontSize: '14px', fontWeight: 500, color: '#617589', margin: 0 }}>Total Peminjaman</p>
-            <span className="material-symbols-outlined" style={{ backgroundColor: 'rgba(19, 127, 236, 0.1)', color: 'var(--primary)', padding: '6px', borderRadius: '8px', fontSize: '18px' }}>menu_book</span>
+            <p style={{ fontSize: '14px', fontWeight: 500, color: '#617589', margin: 0 }}>Total Koleksi Buku</p>
+            <span className="material-symbols-outlined" style={{ backgroundColor: 'rgba(19, 127, 236, 0.1)', color: 'var(--primary)', padding: '6px', borderRadius: '8px', fontSize: '18px' }}>library_books</span>
           </div>
           <p style={{ fontSize: '24px', fontWeight: 700, margin: '8px 0', color: '#111418' }}>{(stats?.total_books || 0).toLocaleString()}</p>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 700, color: '#078838', margin: 0 }}>
-            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>trending_up</span>
-            +2.5% this month
+            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>inventory_2</span>
+            Unit buku terdaftar
           </div>
         </div>
 
@@ -901,13 +899,13 @@ function DashboardView({ setView }: { setView: (v: string) => void }) {
           onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)'; }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <p style={{ fontSize: '14px', fontWeight: 500, color: '#617589', margin: 0 }}>Anggota Aktif</p>
-            <span className="material-symbols-outlined" style={{ backgroundColor: 'rgba(19, 127, 236, 0.1)', color: 'var(--primary)', padding: '6px', borderRadius: '8px', fontSize: '18px' }}>person</span>
+            <p style={{ fontSize: '14px', fontWeight: 500, color: '#617589', margin: 0 }}>Pendaftar Bulan Ini</p>
+            <span className="material-symbols-outlined" style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '6px', borderRadius: '8px', fontSize: '18px' }}>person_add</span>
           </div>
-          <p style={{ fontSize: '24px', fontWeight: 700, margin: '8px 0', color: '#111418' }}>{(stats?.total_members || 0).toLocaleString()}</p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 700, color: '#e73908', margin: 0 }}>
-            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>trending_down</span>
-            -1.2% this month
+          <p style={{ fontSize: '24px', fontWeight: 700, margin: '8px 0', color: '#111418' }}>{(stats?.monthly_new_members || 0).toLocaleString()}</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 700, color: '#078838', margin: 0 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>group</span>
+            Total: {stats?.total_members} Anggota Aktif
           </div>
         </div>
 
@@ -918,13 +916,13 @@ function DashboardView({ setView }: { setView: (v: string) => void }) {
           onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)'; }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <p style={{ fontSize: '14px', fontWeight: 500, color: '#617589', margin: 0 }}>Buku Sedang Dipinjam</p>
+            <p style={{ fontSize: '14px', fontWeight: 500, color: '#617589', margin: 0 }}>Peminjaman Aktif</p>
             <span className="material-symbols-outlined" style={{ backgroundColor: 'rgba(19, 127, 236, 0.1)', color: 'var(--primary)', padding: '6px', borderRadius: '8px', fontSize: '18px' }}>outbox</span>
           </div>
           <p style={{ fontSize: '24px', fontWeight: 700, margin: '8px 0', color: '#111418' }}>{stats?.active_loans || 0}</p>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 700, color: '#078838', margin: 0 }}>
-            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>trending_up</span>
-            +5.0% vs last week
+            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>check_circle</span>
+            Buku sedang dibawa anggota
           </div>
         </div>
 
@@ -939,9 +937,9 @@ function DashboardView({ setView }: { setView: (v: string) => void }) {
             <span className="material-symbols-outlined" style={{ backgroundColor: 'rgba(231, 57, 8, 0.1)', color: '#e73908', padding: '6px', borderRadius: '8px', fontSize: '18px' }}>warning</span>
           </div>
           <p style={{ fontSize: '24px', fontWeight: 700, margin: '8px 0', color: '#111418' }}>{stats?.overdue_loans || 0}</p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 700, color: '#078838', margin: 0 }}>
-            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>expand_more</span>
-            4 less than yesterday
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 700, color: '#e73908', margin: 0 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>alarm_on</span>
+            {stats?.overdue_loans > 0 ? 'Perlu tindakan segera' : 'Aman'}
           </div>
         </div>
       </div>
@@ -974,11 +972,11 @@ function DashboardView({ setView }: { setView: (v: string) => void }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: '32px', padding: '16px 8px', minHeight: '240px' }}>
             {/* Pie Chart */}
             <div style={{
-              position: 'relative', width: '160px', height: '160px', borderRadius: '50%', background: `conic-gradient(${categories.map((cat, i) => {
-                const prevPercent = categories.slice(0, i).reduce((sum, c) => sum + (c.count / totalLoans * 100), 0);
-                const percent = (cat.count / totalLoans * 100);
+              position: 'relative', width: '160px', height: '160px', borderRadius: '50%', background: totalLoans > 0 ? `conic-gradient(${categories.map((cat, i) => {
+                const prevPercent = categories.slice(0, i).reduce((sum, c) => sum + ((c.count || 0) / totalLoans * 100), 0);
+                const percent = ((cat.count || 0) / totalLoans * 100);
                 return `${categoryColors[i % categoryColors.length]} ${prevPercent}% ${prevPercent + percent}%`;
-              }).join(', ')})`, flexShrink: 0, boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+              }).join(', ')})` : '#f1f5f9', flexShrink: 0, boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
             }}>
               <div style={{ position: 'absolute', inset: '24px', background: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <div style={{ textAlign: 'center' }}>
@@ -997,7 +995,7 @@ function DashboardView({ setView }: { setView: (v: string) => void }) {
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <span style={{ fontSize: '12px', fontWeight: 700, color: '#617589' }}>{cat.count}</span>
-                    <span style={{ fontSize: '12px', fontWeight: 900, color: '#111418' }}>{Math.round((cat.count / totalLoans) * 100)}%</span>
+                    <span style={{ fontSize: '12px', fontWeight: 900, color: '#111418' }}>{totalLoans > 0 ? Math.round((cat.count / totalLoans) * 100) : 0}%</span>
                   </div>
                 </div>
               ))}
@@ -1026,8 +1024,12 @@ function DashboardView({ setView }: { setView: (v: string) => void }) {
                 onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
-                <div style={{ width: '48px', height: '64px', background: 'linear-gradient(135deg, rgba(19, 127, 236, 0.3), rgba(19, 127, 236, 0.1))', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <span className="material-symbols-outlined" style={{ color: 'rgba(19, 127, 236, 0.4)', fontSize: '24px' }}>book</span>
+                <div style={{ width: '48px', height: '64px', backgroundColor: '#f3f4f6', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
+                  {book.cover ? (
+                    <img src={book.cover} alt={book.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <span className="material-symbols-outlined" style={{ color: 'rgba(19, 127, 236, 0.4)', fontSize: '24px' }}>book</span>
+                  )}
                 </div>
                 <div style={{ flex: 1 }}>
                   <h4 style={{ fontSize: '14px', fontWeight: 700, margin: 0, color: '#111418' }}>{book.title}</h4>
@@ -1138,6 +1140,7 @@ function BooksView({ books, onRefresh }: { books: Book[], onRefresh: () => void 
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [searchingIsbn, setSearchingIsbn] = useState(false);
   const [loanCountYear, setLoanCountYear] = useState(0);
+  const [bookBorrowers, setBookBorrowers] = useState<LoanDetail[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { showAlert } = useAlert();
 
@@ -1191,12 +1194,18 @@ function BooksView({ books, onRefresh }: { books: Book[], onRefresh: () => void 
   const handleOpenDetail = async (book: Book) => {
     setSelectedBook(book);
     setModalType("detail");
+    setBookBorrowers([]);
     try {
-      const count = await safeInvoke("get_book_loan_count_year", { bookId: book.id });
+      const [count, borrowers] = await Promise.all([
+        safeInvoke("get_book_loan_count_year", { bookId: book.id }),
+        safeInvoke("get_book_borrowers", { bookId: book.id })
+      ]);
       setLoanCountYear(count as number);
+      setBookBorrowers(borrowers || []);
     } catch (err) {
-      console.error("Failed to fetch loan count:", err);
+      console.error("Failed to fetch book details:", err);
       setLoanCountYear(0);
+      setBookBorrowers([]);
     }
   };
 
@@ -1252,7 +1261,7 @@ function BooksView({ books, onRefresh }: { books: Book[], onRefresh: () => void 
       if (modalType === "add") {
         const bookToSend = {
           ...formData,
-          available_copy: formData.total_copy
+          available_copy: formData.total_copy || 1
         };
         const newBookId = await safeInvoke("add_book", { book: bookToSend });
 
@@ -1260,9 +1269,16 @@ function BooksView({ books, onRefresh }: { books: Book[], onRefresh: () => void 
         setSelectedBook(bookData);
         setModalType("barcode");
       } else if (modalType === "edit" && selectedBook) {
+        // Calculate new available_copy based on total_copy change
+        const borrowedCount = selectedBook.total_copy - selectedBook.available_copy;
+        const totalCopy = formData.total_copy || 1;
+        const newAvailable = Math.max(0, totalCopy - borrowedCount);
+
         const bookToSend = {
           ...formData,
-          id: selectedBook.id
+          id: selectedBook.id,
+          available_copy: newAvailable,
+          status: newAvailable > 0 ? "Tersedia" : "Dipinjam"
         };
         await safeInvoke("update_book", { book: bookToSend });
         setModalType("none");
@@ -1278,9 +1294,10 @@ function BooksView({ books, onRefresh }: { books: Book[], onRefresh: () => void 
 
     try {
       await safeInvoke("delete_book", {
-        book_id: selectedBook.id,
+        id: selectedBook.id,
       });
 
+      await showAlert("Buku berhasil dihapus!", "success");
       onRefresh();
       setModalType("none");
     } catch (err) {
@@ -1456,7 +1473,7 @@ function BooksView({ books, onRefresh }: { books: Book[], onRefresh: () => void 
               borderBottom: '1px solid rgba(19, 127, 236, 0.1)',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'between',
+              justifyContent: 'space-between',
               backgroundColor: 'white',
               position: 'sticky',
               top: 0,
@@ -1618,8 +1635,8 @@ function BooksView({ books, onRefresh }: { books: Book[], onRefresh: () => void 
                       className="login-input"
                       style={{ height: '44px', paddingLeft: '40px', fontSize: '0.875rem', borderColor: '#d1d5db', backgroundColor: '#ffffff' }}
                       type="number"
-                      value={formData.total_copy}
-                      onChange={e => setFormData({ ...formData, total_copy: parseInt(e.target.value) })}
+                      value={formData.total_copy ?? 1}
+                      onChange={e => setFormData({ ...formData, total_copy: parseInt(e.target.value) || 0 })}
                       min="1"
                       placeholder="0"
                       required
@@ -1798,133 +1815,214 @@ function BooksView({ books, onRefresh }: { books: Book[], onRefresh: () => void 
       )}
 
       {modalType === "detail" && selectedBook && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '900px', backgroundColor: '#ffffff', borderRadius: '16px', border: '1px solid rgba(19, 127, 236, 0.1)' }}>
-            {/* Header */}
-            <div className="modal-header" style={{ padding: '20px 24px', borderBottom: '1px solid rgba(19, 127, 236, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span className="material-symbols-outlined" style={{ color: 'var(--primary)', fontSize: '1.5rem' }}>book</span>
-                <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#1f2937' }}>Detail Informasi Buku</h2>
+        <div className="modal-overlay" style={{ backgroundColor: 'rgba(0, 0, 0, 0.4)', backdropFilter: 'blur(4px)', zIndex: 1000 }}>
+          <div className="modal-content" style={{
+            width: '100%',
+            maxWidth: '1000px',
+            backgroundColor: 'white',
+            borderRadius: '24px',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'row',
+            border: '1px solid #dbe0e6',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
+          }}>
+            {/* Left Sidebar: Book Cover & Status */}
+            <div style={{
+              width: '320px',
+              backgroundColor: '#f8fafc',
+              padding: '32px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '24px',
+              borderRight: '1px solid #dbe0e6'
+            }}>
+              <div style={{ position: 'relative', width: '100%' }}>
+                <div style={{
+                  width: '100%',
+                  aspectRatio: '3/4',
+                  borderRadius: '16px',
+                  boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+                  overflow: 'hidden',
+                  backgroundColor: 'white',
+                  border: '1px solid #dbe0e6'
+                }}>
+                  {selectedBook.cover ? (
+                    <img src={selectedBook.cover} alt={selectedBook.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', backgroundColor: '#f1f5f9' }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: '4rem', opacity: 0.3 }}>image</span>
+                      <p style={{ fontSize: '0.75rem', marginTop: '8px', fontWeight: 600 }}>NO COVER</p>
+                    </div>
+                  )}
+                </div>
+                {/* Status Badge Overlay */}
+                <div style={{ position: 'absolute', top: '16px', right: '16px' }}>
+                  <span style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 12px',
+                    borderRadius: '9999px',
+                    backgroundColor: selectedBook.available_copy > 0 && selectedBook.status === 'Tersedia' ? '#10b981' : '#ef4444',
+                    color: 'white',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                  }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>
+                      {selectedBook.available_copy > 0 && selectedBook.status === 'Tersedia' ? 'check_circle' : 'error'}
+                    </span>
+                    {selectedBook.available_copy > 0 && selectedBook.status === 'Tersedia' ? 'Tersedia' : 'Tidak Tersedia'}
+                  </span>
+                </div>
               </div>
-              <button onClick={() => setModalType("none")} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}>
-                <span className="material-symbols-outlined">close</span>
-              </button>
+
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ padding: '20px', borderRadius: '16px', backgroundColor: 'white', border: '1px solid #dbe0e6' }}>
+                  <p style={{ color: '#617589', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>Lokasi Rak</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span className="material-symbols-outlined" style={{ color: 'var(--primary)' }}>shelves</span>
+                    <p style={{ color: '#111418', fontWeight: 700, fontSize: '15px', margin: 0 }}>{selectedBook.rack_location || '-'}</p>
+                  </div>
+                  <p style={{ color: '#617589', fontSize: '11px', marginTop: '6px', margin: 0 }}>Lantai 2, Sayap Barat</p>
+                </div>
+                {/* Action Button: Copy Details */}
+                <button
+                  onClick={() => {
+                    const text = `[${selectedBook.barcode || `BK-${selectedBook.id}`}] ${selectedBook.title} - ${selectedBook.author} (${selectedBook.category})`;
+                    navigator.clipboard.writeText(text);
+                    showAlert("Info buku berhasil disalin!", "success");
+                  }}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    padding: '12px',
+                    borderRadius: '12px',
+                    border: '2px solid rgba(19, 127, 236, 0.15)',
+                    color: 'var(--primary)',
+                    fontWeight: 700,
+                    fontSize: '14px',
+                    backgroundColor: 'transparent',
+                    cursor: 'pointer'
+                  }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>content_copy</span>
+                  Salin Info Detail
+                </button>
+              </div>
             </div>
 
-            {/* Body */}
-            <div style={{ padding: '32px', display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '40px', alignItems: 'start' }}>
-              {/* Book Cover */}
-              <div style={{ aspectRatio: '2/3', width: '100%', borderRadius: '12px', backgroundColor: '#f1f5f9', border: '2px dashed #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
-                {selectedBook.cover ? (
-                  <img src={selectedBook.cover} alt="Book Cover" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : (
-                  <div style={{ textAlign: 'center', color: '#94a3b8' }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: '4rem', opacity: 0.3 }}>image</span>
-                    <p style={{ fontSize: '0.75rem', marginTop: '8px' }}>BOOK COVER</p>
+            {/* Right Content: Metadata & Details */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+              {/* Header Section */}
+              <div style={{ padding: '32px 32px 16px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <h1 style={{ fontSize: '32px', fontWeight: 900, color: '#111418', lineHeight: 1.1, margin: 0, letterSpacing: '-0.02em' }}>
+                    {selectedBook.title}
+                  </h1>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <p style={{ color: '#617589', fontSize: '16px', fontWeight: 500, margin: 0 }}>Penulis: <span style={{ color: 'var(--primary)', fontWeight: 700 }}>{selectedBook.author}</span></p>
+                    <span style={{ color: '#dbe0e6' }}>•</span>
+                    <p style={{ color: '#617589', fontSize: '16px', margin: 0 }}>{selectedBook.published_year || '-'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Stats/Metrics Row */}
+              <div style={{ padding: '0 32px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', borderRadius: '20px', padding: '24px', border: '1px solid #dbe0e6', backgroundColor: 'rgba(19, 127, 236, 0.03)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <p style={{ fontSize: '14px', fontWeight: 700, color: '#111418', margin: 0 }}>Stok Eksemplar</p>
+                    <span className="material-symbols-outlined" style={{ color: 'var(--primary)' }}>inventory_2</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+                    <p style={{ color: 'var(--primary)', fontSize: '32px', fontWeight: 900, margin: 0 }}>{selectedBook.available_copy}</p>
+                    <p style={{ color: '#617589', fontSize: '14px', fontWeight: 600, margin: 0 }}>/ {selectedBook.total_copy} Total</p>
+                  </div>
+                  <div style={{ width: '100%', height: '6px', backgroundColor: '#dbe0e6', borderRadius: '9999px', marginTop: '4px', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', backgroundColor: 'var(--primary)', borderRadius: '9999px', width: `${(selectedBook.available_copy / selectedBook.total_copy) * 100}%` }}></div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', borderRadius: '20px', padding: '24px', border: '1px solid #dbe0e6', backgroundColor: 'rgba(19, 127, 236, 0.03)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <p style={{ fontSize: '14px', fontWeight: 700, color: '#111418', margin: 0 }}>Popularity Metric</p>
+                    <span className="material-symbols-outlined" style={{ color: 'var(--primary)' }}>trending_up</span>
+                  </div>
+                  <p style={{ color: 'var(--primary)', fontSize: '32px', fontWeight: 900, margin: 0 }}>{loanCountYear}</p>
+                  <p style={{ color: '#617589', fontSize: '14px', fontWeight: 600, margin: 0 }}>Pinjaman (Tahun Ini)</p>
+                </div>
+              </div>
+
+              {/* Metadata Grid */}
+              <div style={{ padding: '32px', flex: 1 }}>
+                <div style={{ marginBottom: '24px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+                    <div style={{ width: '32px', height: '1px', backgroundColor: 'var(--primary)' }}></div>
+                    <h2 style={{ fontSize: '12px', fontWeight: 800, color: '#111418', textTransform: 'uppercase', letterSpacing: '0.1em', margin: 0 }}>Informasi Detail Buku</h2>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px 40px' }}>
+                    <div style={{ borderBottom: '1px solid #dbe0e6', paddingBottom: '8px' }}>
+                      <p style={{ color: '#617589', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', margin: 0 }}>Kode Buku</p>
+                      <p style={{ fontSize: '14px', fontWeight: 700, color: '#111418', margin: '4px 0 0', fontFamily: 'monospace' }}>{selectedBook.barcode || `BK-${selectedBook.id}`}</p>
+                    </div>
+                    <div style={{ borderBottom: '1px solid #dbe0e6', paddingBottom: '8px' }}>
+                      <p style={{ color: '#617589', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', margin: 0 }}>ISBN</p>
+                      <p style={{ fontSize: '14px', fontWeight: 700, color: '#111418', margin: '4px 0 0' }}>{selectedBook.isbn}</p>
+                    </div>
+                    <div style={{ borderBottom: '1px solid #dbe0e6', paddingBottom: '8px' }}>
+                      <p style={{ color: '#617589', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', margin: 0 }}>Penerbit</p>
+                      <p style={{ fontSize: '14px', fontWeight: 700, color: '#111418', margin: '4px 0 0' }}>{selectedBook.publisher || '-'}</p>
+                    </div>
+                    <div style={{ borderBottom: '1px solid #dbe0e6', paddingBottom: '8px' }}>
+                      <p style={{ color: '#617589', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', margin: 0 }}>Kategori</p>
+                      <p style={{ fontSize: '14px', fontWeight: 700, color: '#111418', margin: '4px 0 0' }}>{selectedBook.category}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Borrowers List Section (New Style) */}
+                {bookBorrowers && bookBorrowers.length > 0 && (
+                  <div style={{ borderRadius: '16px', backgroundColor: '#f0f9ff', padding: '20px', border: '1px solid rgba(19, 127, 236, 0.1)' }}>
+                    <div style={{ display: 'flex', alignItems: 'start', gap: '12px' }}>
+                      <span className="material-symbols-outlined" style={{ color: 'var(--primary)', marginTop: '2px' }}>info</span>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ fontSize: '14px', fontWeight: 800, color: '#111418', margin: 0 }}>Sedang Dipinjam Oleh</p>
+                        <div style={{ marginTop: '12px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                          {bookBorrowers.map((loan, idx) => (
+                            <span
+                              key={idx}
+                              title={`Kelas: ${loan.member_kelas || '-'}`}
+                              style={{ padding: '6px 12px', background: 'white', border: '1px solid rgba(19, 127, 236, 0.1)', borderRadius: '10px', fontSize: '13px', fontWeight: 600, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'help' }}>
+                              <span style={{ color: 'var(--primary)', fontSize: '18px' }} className="material-symbols-outlined">person</span>
+                              {loan.member_name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
 
-              {/* Book Details */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                {/* Status & Last Updated */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{
-                    padding: '6px 12px',
-                    backgroundColor: selectedBook.status === 'Tersedia' ? '#d1fae5' : '#fee2e2',
-                    color: selectedBook.status === 'Tersedia' ? '#065f46' : '#991b1b',
-                    borderRadius: '9999px',
-                    fontSize: '11px',
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px'
-                  }}>
-                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: selectedBook.status === 'Tersedia' ? '#10b981' : '#ef4444' }}></span>
-                    {selectedBook.status || 'Tersedia'}
-                  </span>
-                  <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 500 }}>Terakhir diperbarui: {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                </div>
-
-                {/* Title */}
-                <h2 style={{ fontSize: '1.875rem', fontWeight: 800, color: '#1e293b', lineHeight: 1.2, margin: 0 }}>{selectedBook.title}</h2>
-
-                {/* Info Grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderLeft: '2px solid rgba(19, 127, 236, 0.2)', paddingLeft: '12px' }}>
-                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', fontWeight: 700 }}>ID Internal</span>
-                    <span style={{ color: '#1e293b', fontWeight: 600, fontFamily: 'monospace' }}>{selectedBook.barcode || `LIB-BK-${selectedBook.id}`}</span>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderLeft: '2px solid rgba(19, 127, 236, 0.2)', paddingLeft: '12px' }}>
-                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', fontWeight: 700 }}>ISBN</span>
-                    <span style={{ color: '#1e293b', fontWeight: 600 }}>{selectedBook.isbn}</span>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderLeft: '2px solid rgba(19, 127, 236, 0.2)', paddingLeft: '12px' }}>
-                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', fontWeight: 700 }}>Penulis</span>
-                    <span style={{ color: '#1e293b', fontWeight: 600 }}>{selectedBook.author}</span>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderLeft: '2px solid rgba(19, 127, 236, 0.2)', paddingLeft: '12px' }}>
-                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', fontWeight: 700 }}>Penerbit</span>
-                    <span style={{ color: '#1e293b', fontWeight: 600 }}>{selectedBook.publisher || '-'}</span>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderLeft: '2px solid rgba(19, 127, 236, 0.2)', paddingLeft: '12px' }}>
-                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', fontWeight: 700 }}>Tahun Terbit</span>
-                    <span style={{ color: '#1e293b', fontWeight: 600 }}>{selectedBook.published_year || '-'}</span>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderLeft: '2px solid rgba(19, 127, 236, 0.2)', paddingLeft: '12px' }}>
-                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', fontWeight: 700 }}>Kategori</span>
-                    <span style={{ color: '#1e293b', fontWeight: 600 }}>{selectedBook.category}</span>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderLeft: '2px solid rgba(19, 127, 236, 0.2)', paddingLeft: '12px' }}>
-                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', fontWeight: 700 }}>Lokasi Rak</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: 'var(--primary)' }}>location_on</span>
-                      <span style={{ color: '#1e293b', fontWeight: 600 }}>{selectedBook.rack_location || '-'}</span>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderLeft: '2px solid rgba(19, 127, 236, 0.2)', paddingLeft: '12px' }}>
-                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', fontWeight: 700 }}>Stok Eksemplar</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--primary)' }}>{selectedBook.available_copy}</span>
-                      <span style={{ color: '#94a3b8', fontSize: '0.875rem', fontWeight: 500 }}>dari {selectedBook.total_copy} total</span>
-                    </div>
-                  </div>
-
-                  {/* New Statistic: Total Borrows in 1 Year */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderLeft: '2px solid #f59e0b', paddingLeft: '12px' }}>
-                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', fontWeight: 700 }}>Popularitas</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '1.5rem', fontWeight: 700, color: '#d97706' }}>
-                        {loanCountYear}
-                      </span>
-                      <span style={{ color: '#94a3b8', fontSize: '0.875rem', fontWeight: 500 }}>total pinjam (1 thn terakhir)</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div style={{ padding: '20px 24px', borderTop: '1px solid rgba(19, 127, 236, 0.1)', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#94a3b8' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: '1rem' }}>info</span>
-                <p style={{ fontSize: '12px', margin: 0 }}>Klik 'Edit Data' untuk mengubah informasi buku ini.</p>
-              </div>
-              <div style={{ display: 'flex', gap: '12px' }}>
-                <button onClick={() => setModalType("none")} className="btn-white" style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '0.875rem', fontWeight: 600, border: '1px solid #d1d5db' }}>
+              {/* Footer Actions */}
+              <div style={{ padding: '24px 32px', backgroundColor: '#f8fafc', borderTop: '1px solid #dbe0e6', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button
+                  onClick={() => setModalType("none")}
+                  style={{ padding: '12px 24px', borderRadius: '12px', border: '1px solid #dbe0e6', background: 'white', color: '#111418', fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}
+                >
                   Tutup
                 </button>
-                <button onClick={() => { setFormData(selectedBook); setModalType("edit"); }} className="btn-primary" style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '0.875rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 6px -1px rgba(19, 127, 236, 0.2)' }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: '1.125rem' }}>edit</span>
+                <button
+                  onClick={() => { setFormData(selectedBook); setModalType("edit"); }}
+                  style={{ padding: '12px 24px', borderRadius: '12px', background: 'var(--primary)', color: 'white', border: 'none', fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', boxShadow: '0 4px 6px -1px rgba(19, 91, 236, 0.2)' }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>edit</span>
                   Edit Data
                 </button>
               </div>
@@ -1940,10 +2038,14 @@ function BooksView({ books, onRefresh }: { books: Book[], onRefresh: () => void 
 /* eslint-disable jsx-a11y/no-inline-styles */
 function MembersView({ members, onRefresh }: { members: Member[], onRefresh: () => void }) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active'>('active');
+  const [filterKelas, setFilterKelas] = useState("all");
+  const [filterGender, setFilterGender] = useState("all");
   const [modalType, setModalType] = useState<"none" | "add" | "edit" | "detail">("none");
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const { showAlert, showConfirm } = useAlert();
+  const [memberStats, setMemberStats] = useState<{ total_loans_1_year: number } | null>(null);
+  const [memberLoans, setMemberLoans] = useState<any[]>([]);
   const [formData, setFormData] = useState<Partial<Member>>({
     name: "",
     email: "",
@@ -1966,9 +2068,15 @@ function MembersView({ members, onRefresh }: { members: Member[], onRefresh: () 
     });
   };
 
-  const handleOpenAdd = () => {
+  const handleOpenAdd = async () => {
     resetForm();
     setModalType("add");
+    try {
+      const code = await safeInvoke("generate_member_code");
+      setFormData(prev => ({ ...prev, member_code: code }));
+    } catch (err) {
+      console.error("Failed to generate member code:", err);
+    }
   };
 
   const handleOpenEdit = (member: Member) => {
@@ -1977,9 +2085,21 @@ function MembersView({ members, onRefresh }: { members: Member[], onRefresh: () 
     setModalType("edit");
   };
 
-  const handleOpenDetail = (member: Member) => {
+  const handleOpenDetail = async (member: Member) => {
     setSelectedMember(member);
     setModalType("detail");
+    setMemberStats(null);
+    setMemberLoans([]);
+    try {
+      const [stats, loans] = await Promise.all([
+        safeInvoke("get_member_stats", { memberId: member.id }),
+        safeInvoke("get_member_loans", { memberId: member.id })
+      ]);
+      setMemberStats(stats);
+      setMemberLoans(loans || []);
+    } catch (err) {
+      console.error("Failed to fetch member details:", err);
+    }
   };
 
   const handleDelete = async (member: Member) => {
@@ -2035,9 +2155,12 @@ function MembersView({ members, onRefresh }: { members: Member[], onRefresh: () 
       (member.kelas || '').toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesStatus = filterStatus === 'all' ||
-      (filterStatus === 'active' && (member.status === 'Aktif' || !member.status));
+      (filterStatus === 'active' && (member.status === 'Aktif' || !member.status || member.status === ''));
 
-    return matchesSearch && matchesStatus;
+    const matchesKelas = filterKelas === "all" || member.kelas === filterKelas;
+    const matchesGender = filterGender === "all" || member.jenis_kelamin === filterGender;
+
+    return matchesSearch && matchesStatus && matchesKelas && matchesGender;
   });
 
   return (
@@ -2053,25 +2176,46 @@ function MembersView({ members, onRefresh }: { members: Member[], onRefresh: () 
         </button>
       </header>
 
-      <section style={{ padding: '24px 40px', backgroundColor: 'white', display: 'flex', gap: '12px', alignItems: 'center', borderBottom: '1px solid var(--border-main)' }}>
-        <div className="search-box" style={{ flex: 1, maxWidth: '1000px' }}>
+      <section style={{ padding: '24px 40px', backgroundColor: 'white', display: 'flex', gap: '12px', alignItems: 'center', borderBottom: '1px solid var(--border-main)', flexWrap: 'wrap' }}>
+        <div className="search-box" style={{ flex: 2, minWidth: '300px' }}>
           <span className="material-symbols-outlined search-icon">search</span>
           <input
             className="search-input"
             type="text"
-            placeholder="Cari Nama, ID Anggota, atau Email..."
+            placeholder="Cari Nama, ID Anggota, atau Kelas..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
 
+        <select
+          value={filterKelas}
+          onChange={(e) => setFilterKelas(e.target.value)}
+          style={{ padding: '10px 16px', borderRadius: '8px', border: '1px solid var(--border-main)', fontSize: '0.875rem', fontWeight: 600, color: '#475569', outline: 'none', cursor: 'pointer' }}
+        >
+          <option value="all">Semua Kelas</option>
+          {Array.from(new Set(members.map(m => m.kelas).filter(Boolean))).sort().map(k => (
+            <option key={k} value={k!}>{k}</option>
+          ))}
+        </select>
+
+        <select
+          value={filterGender}
+          onChange={(e) => setFilterGender(e.target.value)}
+          style={{ padding: '10px 16px', borderRadius: '8px', border: '1px solid var(--border-main)', fontSize: '0.875rem', fontWeight: 600, color: '#475569', outline: 'none', cursor: 'pointer' }}
+        >
+          <option value="all">Semua Kelamin</option>
+          <option value="Laki-laki">Laki-laki</option>
+          <option value="Perempuan">Perempuan</option>
+        </select>
+
         <button
-          className={filterStatus === 'all' ? 'btn-primary' : 'btn-white'}
-          style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '0.875rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}
+          className={filterStatus === 'all' ? 'btn-white' : 'btn-primary'}
+          style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '0.875rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', border: filterStatus === 'all' ? '1px solid var(--border-main)' : 'none' }}
           onClick={() => setFilterStatus(filterStatus === 'all' ? 'active' : 'all')}
         >
-          <span className="material-symbols-outlined" style={{ fontSize: '1.125rem' }}>filter_list</span>
-          {filterStatus === 'all' ? 'Semua Status' : 'Hanya Aktif'}
+          <span className="material-symbols-outlined" style={{ fontSize: '1.125rem' }}>{filterStatus === 'all' ? 'visibility' : 'visibility_off'}</span>
+          {filterStatus === 'all' ? 'Lihat Semua (Inc. Nonaktif)' : 'Tampilkan Hanya Aktif'}
         </button>
 
         <button onClick={handleExport} className="btn-white" style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '0.875rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid var(--border-main)' }}>
@@ -2198,7 +2342,9 @@ function MembersView({ members, onRefresh }: { members: Member[], onRefresh: () 
               </div>
               <div>
                 <p style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Anggota Aktif</p>
-                <h3 style={{ fontSize: '1.875rem', fontWeight: 700, color: '#1e293b', margin: '4px 0 0' }}>{(members || []).length}</h3>
+                <h3 style={{ fontSize: '1.875rem', fontWeight: 700, color: '#1e293b', margin: '4px 0 0' }}>
+                  {members.filter(m => !m.status || m.status === 'Aktif').length}
+                </h3>
               </div>
             </div>
           </div>
@@ -2210,7 +2356,14 @@ function MembersView({ members, onRefresh }: { members: Member[], onRefresh: () 
               </div>
               <div>
                 <p style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Pendaftaran Bulan Ini</p>
-                <h3 style={{ fontSize: '1.875rem', fontWeight: 700, color: '#1e293b', margin: '4px 0 0' }}>+24</h3>
+                <h3 style={{ fontSize: '1.875rem', fontWeight: 700, color: '#1e293b', margin: '4px 0 0' }}>
+                  {members.filter(m => {
+                    if (!m.joined_at) return false;
+                    const joinDate = new Date(m.joined_at);
+                    const now = new Date();
+                    return joinDate.getMonth() === now.getMonth() && joinDate.getFullYear() === now.getFullYear();
+                  }).length}
+                </h3>
               </div>
             </div>
           </div>
@@ -2257,19 +2410,39 @@ function MembersView({ members, onRefresh }: { members: Member[], onRefresh: () 
 
             {/* Form Body */}
             <form onSubmit={handleSave} className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              {/* Kode Anggota */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <label className="input-label" style={{ fontWeight: 600, fontSize: '0.875rem', color: '#374151' }}>
                   Kode Anggota <span style={{ color: '#ef4444' }}>*</span>
                 </label>
-                <input
-                  className="login-input"
-                  style={{ height: '44px', paddingLeft: '12px', fontSize: '0.875rem', borderColor: '#d1d5db' }}
-                  value={formData.member_code || ""}
-                  onChange={e => setFormData({ ...formData, member_code: e.target.value })}
-                  placeholder="Contoh: MBR-2024-001"
-                  required
-                />
+                <div style={{ position: 'relative', display: 'flex', gap: '12px' }}>
+                  <div style={{ position: 'relative', flex: 1 }}>
+                    <span className="material-symbols-outlined" style={{ color: '#9ca3af', fontSize: '20px', position: 'absolute', top: '50%', left: '12px', transform: 'translateY(-50%)' }}>qr_code</span>
+                    <input
+                      className="login-input"
+                      style={{ height: '44px', paddingLeft: '44px', fontSize: '0.875rem', borderColor: '#d1d5db', backgroundColor: '#f8fafc', color: '#1f2937' }}
+                      value={formData.member_code || ""}
+                      readOnly
+                      placeholder="Klik tombol generate..."
+                      required
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const code = await safeInvoke("generate_member_code");
+                        setFormData(prev => ({ ...prev, member_code: code }));
+                      } catch (err) {
+                        showAlert("Gagal generate kode", "error");
+                      }
+                    }}
+                    className="btn-primary"
+                    style={{ padding: '0 20px', borderRadius: '8px', fontSize: '0.813rem', fontWeight: 700, whiteSpace: 'nowrap' }}
+                  >
+                    Generate
+                  </button>
+                </div>
+                <p style={{ fontSize: '11px', color: '#94a3b8', margin: '4px 0 0' }}>Sistem akan membuatkan kode unik untuk anggota ini.</p>
               </div>
 
               {/* Nama Lengkap */}
@@ -2384,83 +2557,210 @@ function MembersView({ members, onRefresh }: { members: Member[], onRefresh: () 
         </div>
       )}
 
-      {/* Detail Modal */}
       {modalType === "detail" && selectedMember && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '600px', backgroundColor: '#ffffff', borderRadius: '16px', border: '1px solid rgba(19, 127, 236, 0.1)' }}>
-            <div className="modal-header" style={{ padding: '20px 24px', borderBottom: '1px solid rgba(19, 127, 236, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span className="material-symbols-outlined" style={{ color: 'var(--primary)', fontSize: '1.5rem' }}>badge</span>
-                <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#1f2937' }}>Detail Anggota</h2>
+        <div className="modal-overlay" style={{ backgroundColor: 'rgba(0, 0, 0, 0.4)', backdropFilter: 'blur(4px)', zIndex: 1000 }}>
+          <div className="modal-content" style={{
+            width: '100%',
+            maxWidth: '650px',
+            backgroundColor: 'white',
+            borderRadius: '24px',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            border: '1px solid #dbe0e6',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
+          }}>
+            {/* Header with Background Gradient */}
+            <div style={{
+              padding: '32px 32px 24px',
+              background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+              borderBottom: '1px solid #dbe0e6',
+              position: 'relative'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                <div style={{
+                  width: '80px',
+                  height: '80px',
+                  borderRadius: '20px',
+                  backgroundColor: 'white',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                  border: '1px solid #e2e8f0',
+                  color: 'var(--primary)',
+                  fontWeight: 900,
+                  fontSize: '32px'
+                }}>
+                  {selectedMember.name.charAt(0)}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                    <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 900, color: '#111418', letterSpacing: '-0.02em' }}>{selectedMember.name}</h2>
+                    <span style={{
+                      padding: '4px 10px',
+                      borderRadius: '9999px',
+                      backgroundColor: selectedMember.status === 'Nonaktif' ? '#fee2e2' : '#dcfce7',
+                      color: selectedMember.status === 'Nonaktif' ? '#ef4444' : '#10b981',
+                      fontSize: '11px',
+                      fontWeight: 800,
+                      textTransform: 'uppercase'
+                    }}>
+                      {selectedMember.status || 'Aktif'}
+                    </span>
+                  </div>
+                  <p style={{ margin: 0, color: '#617589', fontSize: '14px', fontWeight: 500 }}>ID Anggota: <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>{selectedMember.member_code}</span></p>
+                </div>
               </div>
-              <button onClick={() => setModalType("none")} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}>
-                <span className="material-symbols-outlined">close</span>
+              <button
+                onClick={() => setModalType("none")}
+                style={{ position: 'absolute', top: '24px', right: '24px', background: 'white', border: '1px solid #e2e8f0', width: '36px', height: '36px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>close</span>
               </button>
             </div>
 
+            {/* Content Body */}
             <div style={{ padding: '32px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', marginBottom: '32px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <p style={{ color: '#617589', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Kelas</p>
+                  <p style={{ color: '#111418', fontWeight: 700, fontSize: '16px', margin: 0 }}>{selectedMember.kelas || '-'}</p>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <p style={{ color: '#617589', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Jenis Kelamin</p>
+                  <p style={{ color: '#111418', fontWeight: 700, fontSize: '16px', margin: 0 }}>{selectedMember.jenis_kelamin || '-'}</p>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <p style={{ color: '#617589', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Nomor Telepon</p>
+                  <p style={{ color: '#111418', fontWeight: 700, fontSize: '16px', margin: 0 }}>{selectedMember.phone || '-'}</p>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <p style={{ color: '#617589', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Email</p>
+                  <p style={{ color: '#111418', fontWeight: 700, fontSize: '16px', margin: 0 }}>{selectedMember.email || '-'}</p>
+                </div>
+              </div>
+
+              {/* Stats Card */}
+              <div style={{
+                padding: '24px',
+                borderRadius: '20px',
+                backgroundColor: 'rgba(19, 127, 236, 0.05)',
+                border: '1px solid rgba(19, 127, 236, 0.1)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}>
+                <div>
+                  <p style={{ color: '#135bec', fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', margin: '0 0 4px' }}>Keaktifan Pinjam</p>
+                  <p style={{ fontSize: '14px', color: '#617589', margin: 0 }}>Aktivitas selama 1 tahun terakhir</p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ textAlign: 'right' }}>
+                    <p style={{ fontSize: '32px', fontWeight: 900, color: '#111418', margin: 0 }}>{memberStats?.total_loans_1_year ?? '...'}</p>
+                    <p style={{ fontSize: '12px', fontWeight: 700, color: '#617589', margin: 0 }}>Total Buku Yang Dipinjam</p>
+                  </div>
+                  <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                    <span className="material-symbols-outlined">menu_book</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginTop: '24px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: '16px', color: '#94a3b8' }}>calendar_month</span>
+                <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>
+                  Terdaftar sejak: {selectedMember.joined_at ? new Date(selectedMember.joined_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}
+                </p>
+              </div>
+
+              {/* Borrowed Books List */}
+              <div style={{ marginTop: '32px', borderTop: '1px solid #f1f5f9', paddingTop: '24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--primary)' }}>menu_book</span>
+                  <p style={{ color: '#111418', fontSize: '14px', fontWeight: 800, margin: 0 }}>Buku Sedang Dipinjam</p>
                   <span style={{
-                    padding: '6px 12px',
-                    backgroundColor: selectedMember.status === 'Nonaktif' ? '#fee2e2' : '#d1fae5',
-                    color: selectedMember.status === 'Nonaktif' ? '#991b1b' : '#065f46',
-                    borderRadius: '9999px',
+                    marginLeft: 'auto',
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    backgroundColor: memberLoans.length > 0 ? 'rgba(19, 127, 236, 0.1)' : '#f1f5f9',
+                    color: memberLoans.length > 0 ? 'var(--primary)' : '#94a3b8',
                     fontSize: '11px',
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px'
+                    fontWeight: 800
                   }}>
-                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: selectedMember.status === 'Nonaktif' ? '#ef4444' : '#10b981' }}></span>
-                    {selectedMember.status || 'Aktif'}
-                  </span>
-                  <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 500 }}>
-                    Bergabung: {selectedMember.joined_at ? new Date(selectedMember.joined_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}
+                    {memberLoans.length} Buku
                   </span>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderLeft: '2px solid rgba(19, 127, 236, 0.2)', paddingLeft: '12px' }}>
-                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', fontWeight: 700 }}>ID Anggota</span>
-                    <span style={{ color: '#1e293b', fontWeight: 600, fontFamily: 'monospace' }}>{selectedMember.member_code}</span>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderLeft: '2px solid rgba(19, 127, 236, 0.2)', paddingLeft: '12px' }}>
-                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', fontWeight: 700 }}>Nama Lengkap</span>
-                    <span style={{ color: '#1e293b', fontWeight: 600 }}>{selectedMember.name}</span>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderLeft: '2px solid rgba(19, 127, 236, 0.2)', paddingLeft: '12px' }}>
-                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', fontWeight: 700 }}>Kelas</span>
-                    <span style={{ color: '#1e293b', fontWeight: 600 }}>{selectedMember.kelas || '-'}</span>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderLeft: '2px solid rgba(19, 127, 236, 0.2)', paddingLeft: '12px' }}>
-                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', fontWeight: 700 }}>Jenis Kelamin</span>
-                    <span style={{ color: '#1e293b', fontWeight: 600 }}>{selectedMember.jenis_kelamin || '-'}</span>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderLeft: '2px solid rgba(19, 127, 236, 0.2)', paddingLeft: '12px' }}>
-                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', fontWeight: 700 }}>Telepon</span>
-                    <span style={{ color: '#1e293b', fontWeight: 600 }}>{selectedMember.phone || '-'}</span>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderLeft: '2px solid rgba(19, 127, 236, 0.2)', paddingLeft: '12px' }}>
-                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#64748b', fontWeight: 700 }}>Email</span>
-                    <span style={{ color: '#1e293b', fontWeight: 600 }}>{selectedMember.email || '-'}</span>
-                  </div>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                  gap: '12px'
+                }}>
+                  {memberLoans.length > 0 ? memberLoans.map((loan, idx) => (
+                    <div key={idx} style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      padding: '10px',
+                      borderRadius: '12px',
+                      border: '1px solid #f1f5f9',
+                      backgroundColor: '#ffffff',
+                      transition: 'all 0.2s'
+                    }}>
+                      <div style={{
+                        width: '44px',
+                        height: '60px',
+                        borderRadius: '8px',
+                        overflow: 'hidden',
+                        backgroundColor: '#f8fafc',
+                        flexShrink: 0,
+                        border: '1px solid #f1f5f9'
+                      }}>
+                        {loan.book_cover ? (
+                          <img src={loan.book_cover} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>image</span>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: 700, color: '#111418', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{loan.book_title}</p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <p style={{ margin: 0, fontSize: '12px', color: '#617589', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>event</span>
+                            {new Date(loan.loan_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+                          </p>
+                          <span style={{ color: '#e2e8f0' }}>•</span>
+                          <p style={{ margin: 0, fontSize: '12px', fontWeight: 600, color: new Date(loan.due_date) < new Date() ? '#ef4444' : '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>history</span>
+                            {new Date(loan.due_date) < new Date() ? 'Terlambat' : `Kembali ${new Date(loan.due_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}`}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )) : (
+                    <div style={{ padding: '24px', textAlign: 'center', backgroundColor: '#f8fafc', borderRadius: '16px', border: '1px dashed #e2e8f0' }}>
+                      <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Tidak ada peminjaman aktif saat ini.</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
 
-            <div style={{ padding: '20px 24px', borderTop: '1px solid rgba(19, 127, 236, 0.1)', backgroundColor: '#f8fafc', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-              <button onClick={() => setModalType("none")} className="btn-white" style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '0.875rem', fontWeight: 600, border: '1px solid #d1d5db' }}>
+            {/* Footer */}
+            <div style={{ padding: '24px 32px', backgroundColor: '#f8fafc', borderTop: '1px solid #dbe0e6', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button
+                onClick={() => setModalType("none")}
+                style={{ padding: '12px 24px', borderRadius: '12px', border: '1px solid #dbe0e6', background: 'white', color: '#111418', fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}
+              >
                 Tutup
               </button>
-              <button onClick={() => { setFormData(selectedMember); setModalType("edit"); }} className="btn-primary" style={{ padding: '10px 24px', borderRadius: '8px', fontSize: '0.875rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: '1.125rem' }}>edit</span>
+              <button
+                onClick={() => { setFormData(selectedMember); setModalType("edit"); }}
+                style={{ padding: '12px 24px', borderRadius: '12px', background: 'var(--primary)', color: 'white', border: 'none', fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', boxShadow: '0 4px 6px -1px rgba(19, 91, 236, 0.2)' }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>edit</span>
                 Edit Data
               </button>
             </div>
@@ -2473,7 +2773,7 @@ function MembersView({ members, onRefresh }: { members: Member[], onRefresh: () 
 
 /* eslint-enable jsx-a11y/no-inline-styles */
 /* eslint-disable jsx-a11y/no-inline-styles */
-function LoansView({ loans: _loans, onRefresh }: { loans: Loan[], onRefresh: () => void }) {
+function LoansView({ onRefresh }: { onRefresh: () => void }) {
   const [memberCode, setMemberCode] = useState("");
   const [bookCode, setBookCode] = useState("");
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
@@ -2481,11 +2781,27 @@ function LoansView({ loans: _loans, onRefresh }: { loans: Loan[], onRefresh: () 
   const [loanDays] = useState(7);
   const { showAlert, showConfirm } = useAlert();
 
+  const handleUpdateDueDate = (index: number, newDateString: string) => {
+    if (!newDateString) return;
+    const newDate = new Date(newDateString);
+    if (isNaN(newDate.getTime())) return;
+
+    const newCart = [...cart];
+    newCart[index].dueDate = newDate.toISOString();
+    setCart(newCart);
+  };
+
   const handleScanMember = async () => {
     if (!memberCode.trim()) return;
 
     try {
       const member = await safeInvoke("find_member_by_code", { memberCode: memberCode }) as Member;
+      if (member.status === "Nonaktif") {
+        await showAlert("Anggota berstatus NONAKTIF tidak diperbolehkan meminjam buku", "error");
+        setSelectedMember(null);
+        setMemberCode("");
+        return;
+      }
       setSelectedMember(member);
     } catch (err) {
       await showAlert("Anggota tidak ditemukan: " + err);
@@ -2537,11 +2853,20 @@ function LoansView({ loans: _loans, onRefresh }: { loans: Loan[], onRefresh: () 
     const confirmed = await showConfirm(`Proses peminjaman ${cart.length} buku untuk ${selectedMember.name}?`);
     if (confirmed) {
       try {
+        const loanDate = new Date();
+        loanDate.setHours(0, 0, 0, 0);
+
         for (const item of cart) {
+          const dueDate = new Date(item.dueDate);
+          dueDate.setHours(0, 0, 0, 0);
+
+          const diffTime = dueDate.getTime() - loanDate.getTime();
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
           await safeInvoke("borrow_book", {
             bookId: item.book.id,
             memberId: selectedMember.id,
-            days: loanDays
+            days: diffDays > 0 ? diffDays : 1
           });
         }
 
@@ -2551,7 +2876,7 @@ function LoansView({ loans: _loans, onRefresh }: { loans: Loan[], onRefresh: () 
         setMemberCode("");
         onRefresh();
       } catch (err) {
-        await showAlert("Gagal memproses peminjaman: " + err, "error");
+        await showAlert("Gagal memproses peminjaman, " + err, "error");
       }
     }
   };
@@ -2606,7 +2931,14 @@ function LoansView({ loans: _loans, onRefresh }: { loans: Loan[], onRefresh: () 
                 <div>
                   <h4 style={{ fontWeight: 700, color: '#1e293b', fontSize: '1.125rem', marginBottom: '4px' }}>{selectedMember.name}</h4>
                   <p style={{ fontSize: '0.875rem', color: '#64748b', marginBottom: '4px' }}>
-                    Status: <span style={{ color: '#10b981', fontWeight: 700, textTransform: 'uppercase', fontSize: '0.75rem' }}>Aktif</span>
+                    Status: <span style={{
+                      color: (selectedMember.status === 'Nonaktif') ? '#ef4444' : '#10b981',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      fontSize: '0.75rem'
+                    }}>
+                      {selectedMember.status || 'Aktif'}
+                    </span>
                   </p>
                   <p style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Batas pinjam: 3 / 5 Buku</p>
                 </div>
@@ -2687,12 +3019,21 @@ function LoansView({ loans: _loans, onRefresh }: { loans: Loan[], onRefresh: () 
                         </div>
                       </td>
                       <td style={{ padding: '20px 24px' }}>
-                        <div>
-                          <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#1e293b', display: 'block' }}>
-                            {new Date(item.dueDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
-                          </span>
-                          <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>({loanDays} Hari)</span>
-                        </div>
+                        <input
+                          type="date"
+                          value={item.dueDate.split('T')[0]}
+                          onChange={(e) => handleUpdateDueDate(index, e.target.value)}
+                          style={{
+                            padding: '8px 12px',
+                            borderRadius: '8px',
+                            border: '1px solid #e2e8f0',
+                            fontSize: '0.875rem',
+                            fontWeight: 600,
+                            color: '#1e293b',
+                            width: '100%',
+                            outline: 'none'
+                          }}
+                        />
                       </td>
                       <td style={{ padding: '20px 24px', textAlign: 'right' }}>
                         <button onClick={() => handleRemoveFromCart(index)} style={{ backgroundColor: 'transparent', border: 'none', color: '#9ca3af', cursor: 'pointer', padding: '8px' }}>

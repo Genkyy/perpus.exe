@@ -45,6 +45,8 @@ pub fn run() {
             commands::get_member_loans,
             commands::get_member_stats,
             commands::get_member_active_loan_count,
+            commands::get_book_borrowers,
+            commands::generate_member_code,
             dashboard_commands::get_popular_categories,
             dashboard_commands::get_most_borrowed_books,
             dashboard_commands::get_member_activity_stats
