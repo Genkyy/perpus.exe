@@ -204,47 +204,73 @@ pub async fn borrow_book(
 
 #[tauri::command]
 pub async fn return_book(pool: State<'_, SqlitePool>, loan_id: i64) -> Result<(), String> {
-    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| format!("Failed to start transaction: {}", e))?;
 
     let loan = sqlx::query_as::<_, Loan>("SELECT * FROM loans WHERE id = ?")
         .bind(loan_id)
         .fetch_one(&mut *tx)
         .await
-        .map_err(|_| "Loan record not found".to_string())?;
+        .map_err(|e| format!("Loan not found or database error: {}", e))?;
 
     if loan.status == "returned" {
         return Err("Book already returned".to_string());
     }
 
     let return_date = Utc::now();
-    let mut fine: i64 = 0;
-
-    if return_date > loan.due_date {
-        let overdue_days = (return_date - loan.due_date).num_days();
-        fine = overdue_days * 1000; // Example fine: 1000 per day
-    }
 
     sqlx::query(
-        "UPDATE loans SET return_date = ?, status = 'returned', fine_amount = ? WHERE id = ?",
+        "UPDATE loans SET return_date = ?, status = 'returned' WHERE id = ?",
     )
     .bind(return_date)
-    .bind(fine)
     .bind(loan_id)
     .execute(&mut *tx)
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| format!("Loan couldnt update: {}", e))?;
 
     sqlx::query(
-        "UPDATE books SET available_copy = available_copy + 1, status = 'Tersedia' WHERE id = ?",
+        "UPDATE books SET available_copy = available_copy + 1, status = CASE WHEN available_copy + 1 > 0 THEN 'Tersedia' ELSE status END WHERE id = ?",
     )
     .bind(loan.book_id)
     .execute(&mut *tx)
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| format!("Book update failed: {}", e))?;
 
-    tx.commit().await.map_err(|e| e.to_string())?;
+    tx.commit()
+        .await
+        .map_err(|e| format!("Failed to commit transaction: {}", e))?;
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn get_recent_returns(
+    pool: State<'_, SqlitePool>,
+    limit: Option<i64>,
+) -> Result<Vec<LoanDetail>, String> {
+    let limit_val = limit.unwrap_or(10);
+    
+    let sql = r#"
+        SELECT 
+            l.id, l.book_id, l.member_id,
+            b.title as book_title, b.isbn as book_isbn, b.cover as book_cover,
+            m.name as member_name, m.member_code, m.status as member_status, m.kelas as member_kelas,
+            l.loan_date, l.due_date, l.status,
+            (SELECT COUNT(*) FROM loans WHERE member_id = m.id AND status = 'borrowed') as member_active_loans
+        FROM loans l
+        JOIN books b ON l.book_id = b.id
+        JOIN members m ON l.member_id = m.id
+        WHERE l.status = 'returned' AND l.return_date IS NOT NULL AND b.deleted_at IS NULL
+        ORDER BY l.return_date DESC
+        LIMIT ?
+    "#;
+
+    let returns = sqlx::query_as::<_, LoanDetail>(sql)
+        .bind(limit_val)
+        .fetch_all(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(returns)
 }
 
 #[tauri::command]
@@ -258,7 +284,6 @@ pub async fn get_active_loans(pool: State<'_, SqlitePool>) -> Result<Vec<LoanWit
             l.loan_date, 
             l.due_date, 
             l.return_date, 
-            COALESCE(l.fine_amount, 0) as fine_amount, 
             l.status
         FROM loans l
         JOIN books b ON l.book_id = b.id
@@ -371,7 +396,6 @@ pub struct MemberLoanInfo {
     pub loan_date: chrono::DateTime<chrono::Utc>,
     pub due_date: chrono::DateTime<chrono::Utc>,
     pub status: String,
-    pub fine_amount: i64,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -380,7 +404,6 @@ pub struct MemberStats {
     pub total_loans_1_year: i64,
     pub active_loans: i64,
     pub overdue_loans: i64,
-    pub total_fines: i64,
 }
 
 #[tauri::command]
@@ -509,7 +532,6 @@ pub struct LoanDetail {
     pub loan_date: chrono::DateTime<chrono::Utc>,
     pub due_date: chrono::DateTime<chrono::Utc>,
     pub status: String,
-    pub fine_amount: i64,
     pub member_active_loans: i64,
     pub member_status: Option<String>,
 }
@@ -523,11 +545,8 @@ pub async fn find_active_loan(
         SELECT 
             l.id, l.book_id, l.member_id,
             b.title as book_title, b.isbn as book_isbn, b.cover as book_cover,
-            m.name as member_name, m.member_code, m.status as member_status, m.kelas as member_kelas,
+            m.name as member_name, m.member_code, COALESCE(m.status, 'Aktif') as member_status, m.kelas as member_kelas,
             l.loan_date, l.due_date, l.status,
-            CAST(
-                MAX(0, (julianday('now') - julianday(l.due_date))) * 1000 
-            AS INTEGER) as fine_amount,
             (SELECT COUNT(*) FROM loans WHERE member_id = m.id AND status = 'borrowed') as member_active_loans
         FROM loans l
         JOIN books b ON l.book_id = b.id
@@ -564,11 +583,8 @@ pub async fn get_overdue_loans(pool: State<'_, SqlitePool>) -> Result<Vec<LoanDe
         SELECT 
             l.id, l.book_id, l.member_id,
             b.title as book_title, b.isbn as book_isbn, b.cover as book_cover,
-            m.name as member_name, m.member_code, m.kelas as member_kelas,
+            m.name as member_name, m.member_code, COALESCE(m.status, 'Aktif') as member_status, m.kelas as member_kelas,
             l.loan_date, l.due_date, l.status,
-            CAST(
-                MAX(0, (julianday('now') - julianday(l.due_date))) * 1000 
-            AS INTEGER) as fine_amount,
             (SELECT COUNT(*) FROM loans WHERE member_id = m.id AND status = 'borrowed') as member_active_loans
         FROM loans l
         JOIN books b ON l.book_id = b.id
@@ -598,10 +614,7 @@ pub async fn get_member_loans(
             b.cover as book_cover,
             l.loan_date,
             l.due_date,
-            l.status,
-            CAST(
-                MAX(0, (julianday('now') - julianday(l.due_date))) * 1000 
-            AS INTEGER) as fine_amount
+            l.status
         FROM loans l
         JOIN books b ON l.book_id = b.id
         WHERE l.member_id = ?
@@ -670,29 +683,13 @@ pub async fn get_member_stats(
     .await
     .map_err(|e| e.to_string())?;
 
-    let total_fines: i64 = sqlx::query_scalar(
-        r#"
-        SELECT COALESCE(SUM(
-            CAST(
-                MAX(0, (julianday('now') - julianday(due_date))) * 1000 
-            AS INTEGER)
-        ), 0)
-        FROM loans 
-        WHERE member_id = ? 
-        AND status = 'borrowed'
-        "#,
-    )
-    .bind(member_id)
-    .fetch_one(&*pool)
-    .await
-    .map_err(|e| e.to_string())?;
+
 
     Ok(MemberStats {
         total_loans_30_days,
         total_loans_1_year,
         active_loans,
         overdue_loans,
-        total_fines,
     })
 }
 
@@ -780,26 +777,31 @@ pub async fn generate_member_code(pool: State<'_, SqlitePool>) -> Result<String,
 
 async fn internal_generate_member_code(pool: &SqlitePool) -> Result<String, sqlx::Error> {
     let current_year = chrono::Utc::now().format("%Y").to_string();
-    let last_code: Option<String> = sqlx::query_scalar(
-        "SELECT member_code FROM members WHERE member_code LIKE ? ORDER BY member_code DESC LIMIT 1"
+    let prefix = format!("MBR-{}-", current_year);
+
+    // Get all codes for current year to safely find max number regardless of padding
+    // We cannot trust string sorting if formats are inconsistent (e.g. "MBR-2024-5" vs "MBR-2024-10")
+    let codes: Vec<String> = sqlx::query_scalar(
+        "SELECT member_code FROM members WHERE member_code LIKE ? ORDER BY length(member_code) DESC, member_code DESC"
     )
-    .bind(format!("MBR-{}%", current_year))
-    .fetch_optional(pool)
+    .bind(format!("{}%", prefix))
+    .fetch_all(pool)
     .await?;
 
-    let next_num = match last_code {
-        Some(code) => {
-            let parts: Vec<&str> = code.split('-').collect();
-            if parts.len() == 3 {
-                parts[2].parse::<i64>().unwrap_or(0) + 1
-            } else {
-                1
+    let mut max_num: i64 = 0;
+
+    for code in codes {
+        if let Some(num_part) = code.strip_prefix(&prefix) {
+            if let Ok(num) = num_part.parse::<i64>() {
+                if num > max_num {
+                    max_num = num;
+                }
             }
         }
-        None => 1,
-    };
+    }
 
-    Ok(format!("MBR-{}-{:04}", current_year, next_num))
+    let next_num = max_num + 1;
+    Ok(format!("{}{:04}", prefix, next_num))
 }
 
 #[tauri::command]
@@ -814,9 +816,6 @@ pub async fn get_book_borrowers(
             b.title as book_title, b.isbn as book_isbn, b.cover as book_cover,
             m.name as member_name, m.member_code, m.status as member_status, m.kelas as member_kelas,
             l.loan_date, l.due_date, l.status,
-            CAST(
-                MAX(0, (julianday('now') - julianday(l.due_date))) * 1000 
-            AS INTEGER) as fine_amount,
             (SELECT COUNT(*) FROM loans WHERE member_id = m.id AND status = 'borrowed') as member_active_loans
         FROM loans l
         JOIN books b ON l.book_id = b.id

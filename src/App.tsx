@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { motion, AnimatePresence } from "framer-motion";
+import * as XLSX from "xlsx";
+import { saveAs } from "file-saver";
 import "./App.css";
 import { useAlert } from "./components/AlertSystem";
 
@@ -56,7 +58,6 @@ interface LoanDetail {
   loan_date: string;
   due_date: string;
   status: string;
-  fine_amount: number;
   member_active_loans: number;
   member_status?: string;
 }
@@ -92,7 +93,7 @@ const safeInvoke = async (cmd: string, args: any = {}): Promise<any> => {
       { id: 1, member_code: "MBR001", name: "Budi Santoso", email: "budi@mail.com", phone: "0812345" }
     ],
     "get_active_loans": [
-      { id: 1, book_title: "Atomic Habits", member_name: "Michael Chen", loan_date: new Date().toISOString(), due_date: new Date(Date.now() + 604800000).toISOString(), status: "borrowed", fine_amount: 0 }
+      { id: 1, book_title: "Atomic Habits", member_name: "Michael Chen", loan_date: new Date().toISOString(), due_date: new Date(Date.now() + 604800000).toISOString(), status: "borrowed" }
     ],
     "get_recent_activity": [
       { id: "L-1", title: "Michael Chen", description: 'meminjam "Atomic Habits"', time: new Date().toISOString(), type_name: "loan" },
@@ -102,10 +103,10 @@ const safeInvoke = async (cmd: string, args: any = {}): Promise<any> => {
       { day: "Minggu", count: 12 }, { day: "Senin", count: 25 }, { day: "Selasa", count: 18 }, { day: "Rabu", count: 32 }, { day: "Kamis", count: 45 }, { day: "Jumat", count: 28 }, { day: "Sabtu", count: 15 }
     ],
     "get_member_loans": [
-      { id: 1, book_title: "Atomic Habits", member_name: "Michael Chen", member_code: "MBR001", loan_date: new Date().toISOString(), due_date: new Date(Date.now() + 604800000).toISOString(), status: "borrowed", fine_amount: 0, member_status: "Aktif" }
+      { id: 1, book_title: "Atomic Habits", member_name: "Michael Chen", member_code: "MBR001", loan_date: new Date().toISOString(), due_date: new Date(Date.now() + 604800000).toISOString(), status: "borrowed", member_status: "Aktif" }
     ],
     "find_active_loan": [
-      { id: 1, book_title: "Atomic Habits", book_isbn: "978-052-5559-47-4", member_name: "Michael Chen", member_code: "MBR001", member_status: "Aktif", loan_date: new Date().toISOString(), due_date: new Date(Date.now() + 604800000).toISOString(), status: "borrowed", fine_amount: 0, member_active_loans: 1 }
+      { id: 1, book_title: "Atomic Habits", book_isbn: "978-052-5559-47-4", member_name: "Michael Chen", member_code: "MBR001", member_status: "Aktif", loan_date: new Date().toISOString(), due_date: new Date(Date.now() + 604800000).toISOString(), status: "borrowed", member_active_loans: 1 }
     ],
     "get_overdue_loans": []
   };
@@ -254,7 +255,19 @@ function ReturnsView() {
 
   useEffect(() => {
     loadOverdue();
+    loadRecentReturns();
   }, []);
+
+  const loadRecentReturns = async () => {
+    try {
+      const results = await safeInvoke("get_recent_returns", { limit: 10 });
+      if (Array.isArray(results)) {
+        setRecentReturns(results);
+      }
+    } catch (err) {
+      console.error("Failed to load recent returns:", err);
+    }
+  };
 
   const loadOverdue = async () => {
     try {
@@ -295,14 +308,16 @@ function ReturnsView() {
       try {
         await safeInvoke("return_book", { loanId: loan.id });
         await showAlert("Buku berhasil dikembalikan!", "success");
-        setRecentReturns([loan, ...recentReturns]);
-
+        
         // Update local state
         const remaining = activeLoans.filter(l => l.id !== loan.id);
         setActiveLoans(remaining);
         if (selectedLoan?.id === loan.id) {
           setSelectedLoan(remaining.length === 1 ? remaining[0] : null);
         }
+        
+        // Reload recent returns
+        loadRecentReturns();
         loadOverdue();
       } catch (err) {
         await showAlert("Gagal mengembalikan buku: " + err, "error");
@@ -406,9 +421,14 @@ function ReturnsView() {
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontWeight: 700, margin: 0, fontSize: '0.813rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{loan.book_title}</p>
-                      <p style={{ fontSize: '0.688rem', color: loan.fine_amount > 0 ? '#ef4444' : '#64748b', margin: '2px 0 0', fontWeight: loan.fine_amount > 0 ? 600 : 400 }}>
-                        {loan.fine_amount > 0 ? 'Terlambat!' : `Tempo: ${formatDate(loan.due_date)}`}
-                      </p>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '2px' }}>
+                        <p style={{ fontSize: '0.688rem', color: getDaysLate(loan.due_date) > 0 ? '#ef4444' : '#64748b', margin: 0, fontWeight: getDaysLate(loan.due_date) > 0 ? 600 : 400 }}>
+                          {getDaysLate(loan.due_date) > 0 ? 'Terlambat!' : `Tempo: ${formatDate(loan.due_date)}`}
+                        </p>
+                        <p style={{ fontSize: '0.688rem', color: '#64748b', margin: 0, fontWeight: 600 }}>
+                          {loan.member_name}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -421,14 +441,14 @@ function ReturnsView() {
               <div style={{ padding: '24px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{
                   padding: '4px 12px',
-                  backgroundColor: selectedLoan.fine_amount > 0 ? '#fee2e2' : '#fef3c7',
-                  color: selectedLoan.fine_amount > 0 ? '#ef4444' : '#b45309',
+                  backgroundColor: getDaysLate(selectedLoan.due_date) > 0 ? '#fee2e2' : '#fef3c7',
+                  color: getDaysLate(selectedLoan.due_date) > 0 ? '#ef4444' : '#b45309',
                   borderRadius: '9999px',
                   fontSize: '0.75rem',
                   fontWeight: 800,
                   textTransform: 'uppercase'
                 }}>
-                  {selectedLoan.fine_amount > 0 ? 'Status: Terlambat' : 'Status: Dipinjam'}
+                  {getDaysLate(selectedLoan.due_date) > 0 ? 'Status: Terlambat' : 'Status: Dipinjam'}
                 </span>
                 <span style={{ fontSize: '0.875rem', color: '#64748b', fontWeight: 500 }}>ID Pinjam: #{selectedLoan.id}</span>
               </div>
@@ -471,26 +491,16 @@ function ReturnsView() {
                       </div>
                       <div>
                         <p style={{ fontSize: '0.625rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', marginBottom: '4px' }}>Jatuh Tempo</p>
-                        <p style={{ fontWeight: 700, color: selectedLoan.fine_amount > 0 ? '#ef4444' : '#1e293b' }}>
+                        <p style={{ fontWeight: 700, color: getDaysLate(selectedLoan.due_date) > 0 ? '#ef4444' : '#1e293b' }}>
                           {formatDate(selectedLoan.due_date)}
                         </p>
                         <p style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                          {selectedLoan.fine_amount > 0 ? `Terlambat ${getDaysLate(selectedLoan.due_date)} hari` : 'Masih dalam periode pinjam'}
+                          {getDaysLate(selectedLoan.due_date) > 0 ? `Terlambat ${getDaysLate(selectedLoan.due_date)} hari` : 'Masih dalam periode pinjam'}
                         </p>
                       </div>
                     </div>
 
-                    {selectedLoan.fine_amount > 0 && (
-                      <div style={{ padding: '16px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ backgroundColor: '#ef4444', color: 'white', padding: '8px', borderRadius: '8px' }}>
-                          <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>payments</span>
-                        </div>
-                        <div>
-                          <p style={{ fontSize: '0.75rem', color: '#b91c1c', margin: 0, fontWeight: 600 }}>Denda Keterlambatan</p>
-                          <p style={{ fontSize: '1.125rem', color: '#b91c1c', margin: 0, fontWeight: 900 }}>Rp {selectedLoan.fine_amount.toLocaleString('id-ID')}</p>
-                        </div>
-                      </div>
-                    )}
+
                   </div>
                 </div>
               </div>
@@ -525,16 +535,16 @@ function ReturnsView() {
         {/* Sidebar Widgets */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           {/* Borrower Account Info */}
-          {(activeLoans.length > 0) && (
+          {selectedLoan && (
             <div className="content-card" style={{ padding: '24px', borderRadius: '16px' }}>
               <h4 style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px' }}>Informasi Akun Peminjam</h4>
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
                 <div style={{ width: '56px', height: '56px', borderRadius: '16px', backgroundColor: 'rgba(19, 127, 236, 0.1)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', fontWeight: 800 }}>
-                  {activeLoans[0].member_name.charAt(0)}
+                  {selectedLoan.member_name.charAt(0)}
                 </div>
                 <div>
-                  <p style={{ fontWeight: 900, color: '#0f172a', margin: 0, fontSize: '1.125rem' }}>{activeLoans[0].member_name}</p>
-                  <p style={{ fontSize: '0.75rem', color: '#64748b', margin: 0 }}>Code: {activeLoans[0].member_code}</p>
+                  <p style={{ fontWeight: 900, color: '#0f172a', margin: 0, fontSize: '1.125rem' }}>{selectedLoan.member_name}</p>
+                  <p style={{ fontSize: '0.75rem', color: '#64748b', margin: 0 }}>Code: {selectedLoan.member_code}</p>
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '20px', backgroundColor: '#f8fafc', borderRadius: '16px', border: '1px solid #f1f5f9' }}>
@@ -546,11 +556,13 @@ function ReturnsView() {
                     backgroundColor: 'rgba(19, 127, 236, 0.1)',
                     padding: '4px 12px',
                     borderRadius: '8px'
-                  }}>{activeLoans[0].member_active_loans} buku</span>
+                  }}>{selectedLoan.member_active_loans} buku</span>
                 </div>
                 <div style={{ fontSize: '0.875rem', color: '#64748b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontWeight: 500 }}>Status Member</span>
-                  <span style={{ fontWeight: 800, color: '#10b981' }}>Terverifikasi</span>
+                  <span style={{ fontWeight: 800, color: selectedLoan.member_status === 'Aktif' ? '#10b981' : '#ef4444' }}>
+                    {selectedLoan.member_status || 'Terverifikasi'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -610,23 +622,36 @@ function ReturnsView() {
         </div>
       </div>
 
-      <div className="content-card" style={{ padding: '24px', borderRadius: '16px' }}>
+      <div className="content-card" style={{ padding: '24px', borderRadius: '16px', marginTop: '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-          <h4 style={{ fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Aktivitas Terakhir</h4>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span className="material-symbols-outlined" style={{ color: 'var(--primary)', fontSize: '20px' }}>history</span>
+            <h4 style={{ fontSize: '0.875rem', fontWeight: 800, color: '#1e293b', textTransform: 'uppercase', margin: 0 }}>Aktivitas Pengembalian Terakhir</h4>
+          </div>
+          <span style={{ backgroundColor: '#e2e8f0', color: '#475569', padding: '4px 10px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 700 }}>{recentReturns.length}</span>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {recentReturns.length > 0 ? recentReturns.map((item, i) => (
-            <div key={i} style={{ display: 'flex', gap: '16px' }}>
+            <div key={i} style={{ display: 'flex', gap: '16px', padding: '16px', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #f1f5f9', transition: 'all 0.2s' }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
+            >
               <div style={{ width: '40px', height: '40px', borderRadius: '8px', backgroundColor: '#dcfce7', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <span className="material-symbols-outlined" style={{ fontSize: '1.25rem' }}>check_circle</span>
               </div>
-              <div style={{ overflow: 'hidden' }}>
-                <p style={{ fontSize: '0.875rem', fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.book_title}</p>
-                <p style={{ fontSize: '0.625rem', color: '#64748b' }}>Dikembalikan baru saja</p>
+              <div style={{ overflow: 'hidden', flex: 1 }}>
+                <p style={{ fontSize: '0.875rem', fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', margin: 0 }}>{item.book_title}</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px', fontSize: '0.75rem', color: '#64748b' }}>
+                  <span>Peminjam: {item.member_name}</span>
+                  <span>Tanda terima OK</span>
+                </div>
               </div>
             </div>
           )) : (
-            <p style={{ fontSize: '0.875rem', color: '#94a3b8', fontStyle: 'italic' }}>Belum ada aktivitas</p>
+            <div style={{ padding: '32px 16px', textAlign: 'center', color: '#94a3b8' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: '32px', marginBottom: '8px', opacity: 0.5 }}>inbox</span>
+              <p style={{ fontSize: '0.875rem', margin: 0, fontWeight: 500 }}>Belum ada pengembalian hari ini</p>
+            </div>
           )}
         </div>
       </div>
@@ -824,7 +849,12 @@ function DashboardView({ setView }: { setView: (v: string) => void }) {
   };
 
   const handleExportExcel = async () => {
-    await showAlert("Export Excel akan segera tersedia", "info");
+    try {
+      // For dashboard, just show a message to use specific view exports
+      await showAlert("Silakan gunakan fitur ekspor di menu Buku atau Data Anggota untuk mendapatkan data spesifik.", "info");
+    } catch (err) {
+      await showAlert("Gagal ekspor Excel: " + err, "error");
+    }
   };
 
   const handlePrint = async () => {
@@ -1278,7 +1308,7 @@ function BooksView({ books, onRefresh }: { books: Book[], onRefresh: () => void 
           ...formData,
           id: selectedBook.id,
           available_copy: newAvailable,
-          status: newAvailable > 0 ? "Tersedia" : "Dipinjam"
+          status: formData.status || (newAvailable > 0 ? "Tersedia" : "Dipinjam")
         };
         await safeInvoke("update_book", { book: bookToSend });
         setModalType("none");
@@ -1767,13 +1797,13 @@ function BooksView({ books, onRefresh }: { books: Book[], onRefresh: () => void 
 
       {modalType === "barcode" && selectedBook && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '480px', backgroundColor: '#ffffff', borderRadius: '32px' }}>
+          <div className="modal-content" style={{ maxWidth: '600px', backgroundColor: '#ffffff', borderRadius: '32px' }}>
             <div className="modal-header" style={{ padding: '32px 32px 16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                 <div style={{ backgroundColor: '#10b98120', padding: '10px', borderRadius: '14px' }}>
                   <span className="material-symbols-outlined" style={{ color: '#10b981', fontSize: '1.5rem' }}>barcode_scanner</span>
                 </div>
-                <h3 style={{ margin: 0, fontWeight: 800, fontSize: '1.25rem', color: '#1e293b' }}>Digital Asset Barcode</h3>
+                <h3 style={{ margin: 0, fontWeight: 800, fontSize: '1.25rem', color: '#1e293b' }}>Barcode Buku</h3>
               </div>
               <button onClick={() => setModalType("none")} style={{ background: '#f1f5f9', border: 'none', cursor: 'pointer', color: '#64748b', width: '40px', height: '40px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <span className="material-symbols-outlined" style={{ fontSize: '1.25rem' }}>close</span>
@@ -1783,31 +1813,114 @@ function BooksView({ books, onRefresh }: { books: Book[], onRefresh: () => void 
             <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '24px', padding: '0 32px 32px' }}>
               <div style={{ textAlign: 'center', backgroundColor: '#f8fafc', padding: '24px', borderRadius: '24px', width: '100%' }}>
                 <h4 style={{ margin: '0 0 8px', fontSize: '1.125rem', fontWeight: 700, color: '#1e293b' }}>{selectedBook.title}</h4>
-                <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', fontSize: '0.813rem', color: '#64748b', fontWeight: 500 }}>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', fontSize: '0.813rem', color: '#64748b', fontWeight: 500, flexWrap: 'wrap' }}>
                   <span>{selectedBook.author}</span>
                   <span>•</span>
                   <span style={{ fontFamily: 'monospace' }}>ISBN: {selectedBook.isbn}</span>
                 </div>
               </div>
 
-              <div id="barcode-printable" style={{ backgroundColor: 'white', padding: '48px 32px', borderRadius: '24px', border: '2px solid #f1f5f9', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-                <div style={{ display: 'flex', height: '80px', gap: '2px', marginBottom: '24px', width: '100%', justifyContent: 'center' }}>
-                  {[1, 3, 1, 2, 1, 3, 2, 1, 1, 2, 1, 3, 2, 1, 2, 3, 1, 2].map((w, i) => (
-                    <div key={i} style={{ width: `${w * 2.5}px`, height: '100%', backgroundColor: i % 2 === 0 ? '#1e293b' : 'transparent' }}></div>
-                  ))}
+              <div id="barcode-printable" style={{ backgroundColor: 'white', padding: '40px', borderRadius: '16px', border: '2px solid #dbe0e6', display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', gap: '20px', pageBreakAfter: 'avoid' }}>
+                {/* Barcode bars representation */}
+                <div style={{ display: 'flex', alignItems: 'flex-end', height: '100px', gap: '2px', justifyContent: 'center' }}>
+                  {(() => {
+                    const bars: number[] = [];
+                    for (let i = 0; i < 40; i++) {
+                      bars.push(Math.floor(Math.random() * 4) + 1);
+                    }
+                    
+                    return bars.map((w, i) => (
+                      <div key={i} style={{ width: `${w * 2}px`, height: `${60 + (i % 2) * 15}px`, backgroundColor: '#1e293b' }}></div>
+                    ));
+                  })()}
                 </div>
-                <div style={{ fontFamily: 'monospace', fontWeight: 800, letterSpacing: '8px', fontSize: '1.25rem', color: '#1e293b', backgroundColor: '#f1f5f9', padding: '8px 24px', borderRadius: '12px' }}>
-                  {selectedBook.barcode || `ID-${selectedBook.id}`}
+                
+                {/* Barcode text */}
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '2rem', color: '#1e293b', letterSpacing: '4px', marginBottom: '8px' }}>
+                    {selectedBook.barcode || `ID-${selectedBook.id}`}
+                  </div>
+                  <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '0', fontWeight: 600 }}>
+                    {selectedBook.title.substring(0, 40)}{selectedBook.title.length > 40 ? '...' : ''}
+                  </p>
                 </div>
+              </div>
+
+              <div style={{ fontSize: '0.75rem', color: '#94a3b8', textAlign: 'center', padding: '16px', backgroundColor: '#f8fafc', borderRadius: '12px', width: '100%' }}>
+                <p style={{ margin: 0 }}>📋 Catatan: Pastikan barcode dalam kondisi jelas saat dicetak untuk hasil scanning yang optimal.</p>
               </div>
             </div>
 
             <div className="modal-footer" style={{ padding: '0 32px 32px', display: 'flex', gap: '12px' }}>
-              <button className="btn-white" onClick={() => window.print()} style={{ flex: 1, height: '52px', borderRadius: '16px', fontWeight: 700 }}>
-                <span className="material-symbols-outlined" style={{ marginRight: '8px' }}>print</span> Cetak
+              <button 
+                className="btn-white" 
+                onClick={() => {
+                  setTimeout(() => window.print(), 100);
+                }} 
+                style={{ flex: 1, height: '52px', borderRadius: '16px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>print</span> Cetak
               </button>
-              <button className="btn-primary" style={{ flex: 1, height: '52px', borderRadius: '16px', fontWeight: 700 }}>
-                <span className="material-symbols-outlined" style={{ marginRight: '8px' }}>download</span> Unduh
+              <button 
+                className="btn-primary" 
+                onClick={async () => {
+                  try {
+                    // Create a canvas for the barcode
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 400;
+                    canvas.height = 300;
+                    const ctx = canvas.getContext('2d');
+                    
+                    if (!ctx) {
+                      await showAlert("Gagal membuat barcode", "error");
+                      return;
+                    }
+
+                    // Draw white background
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                    // Draw barcode pattern
+                    const barcodeText = selectedBook.barcode || `ID-${selectedBook.id}`;
+                    ctx.fillStyle = '#1e293b';
+                    
+                    // Generate readable bars
+                    const barWidth = 4;
+                    let x = 50;
+                    
+                    for (let i = 0; i < 40; i++) {
+                      const height = 60 + (Math.random() * 40);
+                      ctx.fillRect(x, 80 - height/2, barWidth, height);
+                      x += barWidth + 2;
+                    }
+
+                    // Draw barcode text
+                    ctx.fillStyle = '#1e293b';
+                    ctx.font = 'bold 32px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(barcodeText, canvas.width / 2, 240);
+
+                    // Draw title
+                    ctx.font = '12px Arial';
+                    ctx.fillStyle = '#64748b';
+                    const titleText = selectedBook.title.substring(0, 35);
+                    ctx.fillText(titleText, canvas.width / 2, 270);
+
+                    // Download as PNG
+                    canvas.toBlob((blob) => {
+                      if (blob) {
+                        saveAs(blob, `barcode_${selectedBook.barcode || selectedBook.id}.png`);
+                        showAlert("Barcode berhasil diunduh!", "success");
+                      }
+                    }, 'image/png');
+                  } catch (err) {
+                    console.error("Download error:", err);
+                    await showAlert("Gagal mengunduh barcode. Coba gunakan fitur cetak.", "error");
+                  }
+                }}
+                style={{ flex: 1, height: '52px', borderRadius: '16px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>download</span> Unduh
               </button>
             </div>
           </div>
@@ -1963,8 +2076,8 @@ function BooksView({ books, onRefresh }: { books: Book[], onRefresh: () => void 
               <div style={{ padding: '32px', flex: 1 }}>
                 <div style={{ marginBottom: '24px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-                    <div style={{ width: '32px', height: '1px', backgroundColor: 'var(--primary)' }}></div>
-                    <h2 style={{ fontSize: '12px', fontWeight: 800, color: '#111418', textTransform: 'uppercase', letterSpacing: '0.1em', margin: 0 }}>Informasi Detail Buku</h2>
+                    <div style={{ width: '17px', height: '3.5px', backgroundColor: 'var(--primary)' }}></div>
+                    <h2 style={{ fontSize: '13px', fontWeight: 800, color: '#111418', textTransform: 'uppercase', margin: 0 }}>Informasi Detail Buku</h2>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px 40px' }}>
                     <div style={{ borderBottom: '1px solid #dbe0e6', paddingBottom: '8px' }}>
@@ -2132,19 +2245,39 @@ function MembersView({ members, onRefresh }: { members: Member[], onRefresh: () 
     }
   };
 
-  const handleExport = () => {
-    const csvContent = [
-      ["ID Anggota", "Nama", "Kelas", "Jenis Kelamin", "Telepon", "Status"],
-      ...filteredMembers.map(m => [m.member_code, m.name, m.kelas || '', m.jenis_kelamin || '', m.phone || '', m.status || 'Aktif'])
-    ].map(row => row.join(",")).join("\n");
+  const handleExport = async () => {
+    try {
+      if (!filteredMembers || filteredMembers.length === 0) {
+        await showAlert("Tidak ada data anggota untuk dieksport", "warning");
+        return;
+      }
 
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `anggota_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
+      const membersExportData = filteredMembers.map(m => ({
+        'ID Anggota': m.member_code,
+        'Nama': m.name,
+        'Email': m.email || '-',
+        'Kelas': m.kelas || '-',
+        'Jenis Kelamin': m.jenis_kelamin || '-',
+        'Telepon': m.phone || '-',
+        'Status': m.status || 'Aktif',
+        'Terdaftar': m.joined_at ? new Date(m.joined_at).toLocaleDateString('id-ID') : '-'
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(membersExportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Data Anggota");
+      
+      // Auto-size columns
+      const columnWidths = [15, 20, 20, 12, 15, 15, 12, 15];
+      ws['!cols'] = columnWidths.map(width => ({ wch: width }));
+      
+      const fileName = `data_anggota_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      await showAlert("Data anggota berhasil dieksport!", "success");
+    } catch (err) {
+      console.error("Export error:", err);
+      await showAlert("Gagal mengeksport data: " + err, "error");
+    }
   };
 
   const filteredMembers = (members || []).filter(member => {
@@ -2194,9 +2327,12 @@ function MembersView({ members, onRefresh }: { members: Member[], onRefresh: () 
           style={{ padding: '10px 16px', borderRadius: '8px', border: '1px solid var(--border-main)', fontSize: '0.875rem', fontWeight: 600, color: '#475569', outline: 'none', cursor: 'pointer' }}
         >
           <option value="all">Semua Kelas</option>
-          {Array.from(new Set(members.map(m => m.kelas).filter(Boolean))).sort().map(k => (
-            <option key={k} value={k!}>{k}</option>
-          ))}
+          <option value="X A">X A</option>
+          <option value="X B">X B</option>
+          <option value="XI A">XI A</option>
+          <option value="XI B">XI B</option>
+          <option value="XII A">XII A</option>
+          <option value="XII B">XII B</option>
         </select>
 
         <select
@@ -2462,18 +2598,55 @@ function MembersView({ members, onRefresh }: { members: Member[], onRefresh: () 
 
               {/* Grid 2 Kolom */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                {/* Email */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label className="input-label" style={{ fontWeight: 600, fontSize: '0.875rem', color: '#374151' }}>
+                    Email
+                  </label>
+                  <input
+                    className="login-input"
+                    type="email"
+                    style={{ height: '44px', paddingLeft: '12px', fontSize: '0.875rem', borderColor: '#d1d5db' }}
+                    value={formData.email || ""}
+                    onChange={e => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="nama@email.com"
+                  />
+                </div>
+
+                {/* Nomor Telepon */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label className="input-label" style={{ fontWeight: 600, fontSize: '0.875rem', color: '#374151' }}>
+                    Nomor Telepon
+                  </label>
+                  <input
+                    className="login-input"
+                    type="tel"
+                    style={{ height: '44px', paddingLeft: '12px', fontSize: '0.875rem', borderColor: '#d1d5db' }}
+                    value={formData.phone || ""}
+                    onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                    placeholder="08xx-xxxx-xxxx"
+                  />
+                </div>
+
                 {/* Kelas */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <label className="input-label" style={{ fontWeight: 600, fontSize: '0.875rem', color: '#374151' }}>
                     Kelas
                   </label>
-                  <input
+                  <select
                     className="login-input"
-                    style={{ height: '44px', paddingLeft: '12px', fontSize: '0.875rem', borderColor: '#d1d5db' }}
+                    style={{ height: '44px', paddingLeft: '8px', fontSize: '0.875rem', borderColor: '#d1d5db' }}
                     value={formData.kelas || ""}
                     onChange={e => setFormData({ ...formData, kelas: e.target.value })}
-                    placeholder="Contoh: X IPA 1"
-                  />
+                  >
+                    <option value="">Pilih Kelas...</option>
+                    <option value="X A">X A</option>
+                    <option value="X B">X B</option>
+                    <option value="XI A">XI A</option>
+                    <option value="XI B">XI B</option>
+                    <option value="XII A">XII A</option>
+                    <option value="XII B">XII B</option>
+                  </select>
                 </div>
 
                 {/* Jenis Kelamin */}
@@ -2493,23 +2666,8 @@ function MembersView({ members, onRefresh }: { members: Member[], onRefresh: () 
                   </select>
                 </div>
 
-                {/* Nomor Telepon */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <label className="input-label" style={{ fontWeight: 600, fontSize: '0.875rem', color: '#374151' }}>
-                    Nomor Telepon
-                  </label>
-                  <input
-                    className="login-input"
-                    type="tel"
-                    style={{ height: '44px', paddingLeft: '12px', fontSize: '0.875rem', borderColor: '#d1d5db' }}
-                    value={formData.phone || ""}
-                    onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                    placeholder="08xx-xxxx-xxxx"
-                  />
-                </div>
-
                 {/* Status */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', gridColumn: 'span 2' }}>
                   <label className="input-label" style={{ fontWeight: 600, fontSize: '0.875rem', color: '#374151' }}>
                     Status <span style={{ color: '#ef4444' }}>*</span>
                   </label>
@@ -2777,6 +2935,7 @@ function LoansView({ onRefresh }: { onRefresh: () => void }) {
   const [memberCode, setMemberCode] = useState("");
   const [bookCode, setBookCode] = useState("");
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
+  const [memberLoanCount, setMemberLoanCount] = useState(0);
   const [cart, setCart] = useState<Array<{ book: Book, dueDate: string }>>([]);
   const [loanDays] = useState(7);
   const { showAlert, showConfirm } = useAlert();
@@ -2802,6 +2961,15 @@ function LoansView({ onRefresh }: { onRefresh: () => void }) {
         setMemberCode("");
         return;
       }
+
+      try {
+        const count = await safeInvoke("get_member_active_loan_count", { memberId: member.id }) as number;
+        setMemberLoanCount(count);
+      } catch (e) {
+        console.error("Failed to get loan count", e);
+        setMemberLoanCount(0);
+      }
+
       setSelectedMember(member);
     } catch (err) {
       await showAlert("Anggota tidak ditemukan: " + err);
@@ -2939,8 +3107,12 @@ function LoansView({ onRefresh }: { onRefresh: () => void }) {
                     }}>
                       {selectedMember.status || 'Aktif'}
                     </span>
+                    <span style={{ margin: '0 8px', color: '#cbd5e1' }}>|</span>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Kelas: {selectedMember.kelas || '-'}</span>
                   </p>
-                  <p style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Batas pinjam: 3 / 5 Buku</p>
+                  <p style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                    Sedang meminjam: <span style={{ fontWeight: 700, color: memberLoanCount >= 3 ? '#ef4444' : '#1e293b' }}>{memberLoanCount}</span> / 5 Buku
+                  </p>
                 </div>
               </div>
             )}

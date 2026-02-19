@@ -40,7 +40,6 @@ pub struct Loan {
     pub loan_date: DateTime<Utc>,
     pub due_date: DateTime<Utc>,
     pub return_date: Option<DateTime<Utc>>,
-    pub fine_amount: Option<i64>,
     pub status: String,
 }
 
@@ -52,7 +51,6 @@ pub struct LoanWithDetails {
     pub loan_date: DateTime<Utc>,
     pub due_date: DateTime<Utc>,
     pub return_date: Option<DateTime<Utc>>,
-    pub fine_amount: i64,
     pub status: String,
 }
 

@@ -112,10 +112,7 @@ pub async fn get_overdue_loans(
             l.id, l.book_id, l.member_id,
             b.title as book_title, b.isbn as book_isbn, b.cover as book_cover,
             m.name as member_name, m.member_code,
-            l.loan_date, l.due_date, l.status,
-            CAST(
-                MAX(0, (julianday('now') - julianday(l.due_date))) * 1000 
-            AS INTEGER) as fine_amount
+            l.loan_date, l.due_date, l.status
         FROM loans l
         JOIN books b ON l.book_id = b.id
         JOIN members m ON l.member_id = m.id

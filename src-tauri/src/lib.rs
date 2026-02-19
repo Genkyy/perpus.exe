@@ -31,6 +31,7 @@ pub fn run() {
             commands::delete_member,
             commands::borrow_book,
             commands::return_book,
+            commands::get_recent_returns,
             commands::get_active_loans,
             commands::get_stats,
             commands::get_recent_activity,
