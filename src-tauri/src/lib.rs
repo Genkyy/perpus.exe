@@ -3,6 +3,7 @@ pub mod dashboard_commands;
 pub mod dashboard_models;
 mod db;
 mod models;
+pub mod settings_commands;
 
 use tauri::Manager;
 
@@ -48,6 +49,14 @@ pub fn run() {
             commands::get_member_active_loan_count,
             commands::get_book_borrowers,
             commands::generate_member_code,
+            commands::get_member_borrowing_history,
+            settings_commands::update_profile,
+            settings_commands::change_password,
+            settings_commands::backup_database,
+            settings_commands::reset_database,
+            settings_commands::get_app_version,
+            settings_commands::get_settings,
+            settings_commands::update_setting,
             dashboard_commands::get_popular_categories,
             dashboard_commands::get_most_borrowed_books,
             dashboard_commands::get_member_activity_stats

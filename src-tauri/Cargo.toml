@@ -26,4 +26,5 @@ sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "chrono"
 tokio = { version = "1", features = ["full"] }
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "1"
+tauri-plugin-dialog = "2.6.0"
 

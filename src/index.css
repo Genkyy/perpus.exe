@@ -13,7 +13,17 @@
     --win-border: #d1d5db;
 }
 
-:root {
+[data-theme="dark"] {
+    --bg-main: #0f172a;
+    --sidebar-main: #1e293b;
+    --card-main: #1e293b;
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --border-main: #334155;
+    --bg-light: #1e293b;
+}
+
+:root:not([data-theme="dark"]) {
     --bg-main: var(--bg-light);
     --sidebar-main: var(--sidebar-light);
     --card-main: var(--card-light);

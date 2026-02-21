@@ -105,6 +105,14 @@ const safeInvoke = async (cmd: string, args: any = {}): Promise<any> => {
     "get_member_loans": [
       { id: 1, book_title: "Atomic Habits", member_name: "Michael Chen", member_code: "MBR001", loan_date: new Date().toISOString(), due_date: new Date(Date.now() + 604800000).toISOString(), status: "borrowed", member_status: "Aktif" }
     ],
+    "get_member_borrowing_history": [
+      { id: 1, book_id: 1, book_title: "Laskar Pelangi", book_isbn: "978-979-3062-79-1", loan_date: "2025-11-12T00:00:00Z", due_date: "2025-11-26T00:00:00Z", return_date: "2025-11-26T00:00:00Z", status: "returned" },
+      { id: 2, book_id: 2, book_title: "Bumi Manusia", book_isbn: "978-602-9144-01-6", loan_date: "2025-05-01T00:00:00Z", due_date: "2025-05-15T00:00:00Z", return_date: null, status: "borrowed" },
+      { id: 3, book_id: 3, book_title: "Clean Code", book_isbn: "978-013-2350-88-4", loan_date: "2025-02-15T00:00:00Z", due_date: "2025-03-01T00:00:00Z", return_date: "2025-03-01T00:00:00Z", status: "returned" },
+      { id: 4, book_id: 4, book_title: "The Midnight Library", book_isbn: "978-052-5559-47-4", loan_date: "2025-06-10T00:00:00Z", due_date: "2025-06-24T00:00:00Z", return_date: null, status: "borrowed" },
+      { id: 5, book_id: 5, book_title: "Sapiens", book_isbn: "978-006-2316-09-7", loan_date: "2024-12-05T00:00:00Z", due_date: "2024-12-19T00:00:00Z", return_date: "2024-12-19T00:00:00Z", status: "returned" },
+      { id: 6, book_id: 1, book_title: "Educated", book_isbn: "978-979-3062-79-1", loan_date: "2025-01-20T00:00:00Z", due_date: "2025-02-03T00:00:00Z", return_date: "2025-02-03T00:00:00Z", status: "returned" }
+    ],
     "find_active_loan": [
       { id: 1, book_title: "Atomic Habits", book_isbn: "978-052-5559-47-4", member_name: "Michael Chen", member_code: "MBR001", member_status: "Aktif", loan_date: new Date().toISOString(), due_date: new Date(Date.now() + 604800000).toISOString(), status: "borrowed", member_active_loans: 1 }
     ],
@@ -119,6 +127,20 @@ function App() {
   const [view, setView] = useState("dashboard");
   const [books, setBooks] = useState<Book[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+
+  useEffect(() => {
+    const initApp = async () => {
+      try {
+        const s = await safeInvoke('get_settings');
+        if (s && s.theme) {
+          document.documentElement.setAttribute('data-theme', s.theme);
+        }
+      } catch (err) {
+        console.error("Failed to load settings:", err);
+      }
+    };
+    initApp();
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -193,7 +215,7 @@ function App() {
           <button className="nav-item" onClick={() => setUser(null)} style={{ color: '#ef4444' }}>
             <span className="material-symbols-outlined">logout</span> Keluar
           </button>
-          <button className="nav-item">
+          <button className={`nav-item ${view === "settings" ? "active" : ""}`} onClick={() => setView("settings")}>
             <span className="material-symbols-outlined">settings</span> Pengaturan
           </button>
         </div>
@@ -238,6 +260,7 @@ function App() {
               />
             )}
             {view === "returns" && <ReturnsView />}
+            {view === "settings" && <SettingsView user={user} onProfileUpdate={setUser} />}
           </motion.div>
         </AnimatePresence>
       </main>
@@ -308,14 +331,14 @@ function ReturnsView() {
       try {
         await safeInvoke("return_book", { loanId: loan.id });
         await showAlert("Buku berhasil dikembalikan!", "success");
-        
+
         // Update local state
         const remaining = activeLoans.filter(l => l.id !== loan.id);
         setActiveLoans(remaining);
         if (selectedLoan?.id === loan.id) {
           setSelectedLoan(remaining.length === 1 ? remaining[0] : null);
         }
-        
+
         // Reload recent returns
         loadRecentReturns();
         loadOverdue();
@@ -1828,13 +1851,13 @@ function BooksView({ books, onRefresh }: { books: Book[], onRefresh: () => void 
                     for (let i = 0; i < 40; i++) {
                       bars.push(Math.floor(Math.random() * 4) + 1);
                     }
-                    
+
                     return bars.map((w, i) => (
                       <div key={i} style={{ width: `${w * 2}px`, height: `${60 + (i % 2) * 15}px`, backgroundColor: '#1e293b' }}></div>
                     ));
                   })()}
                 </div>
-                
+
                 {/* Barcode text */}
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '2rem', color: '#1e293b', letterSpacing: '4px', marginBottom: '8px' }}>
@@ -1852,17 +1875,17 @@ function BooksView({ books, onRefresh }: { books: Book[], onRefresh: () => void 
             </div>
 
             <div className="modal-footer" style={{ padding: '0 32px 32px', display: 'flex', gap: '12px' }}>
-              <button 
-                className="btn-white" 
+              <button
+                className="btn-white"
                 onClick={() => {
                   setTimeout(() => window.print(), 100);
-                }} 
+                }}
                 style={{ flex: 1, height: '52px', borderRadius: '16px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
               >
                 <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>print</span> Cetak
               </button>
-              <button 
-                className="btn-primary" 
+              <button
+                className="btn-primary"
                 onClick={async () => {
                   try {
                     // Create a canvas for the barcode
@@ -1870,7 +1893,7 @@ function BooksView({ books, onRefresh }: { books: Book[], onRefresh: () => void 
                     canvas.width = 400;
                     canvas.height = 300;
                     const ctx = canvas.getContext('2d');
-                    
+
                     if (!ctx) {
                       await showAlert("Gagal membuat barcode", "error");
                       return;
@@ -1883,14 +1906,14 @@ function BooksView({ books, onRefresh }: { books: Book[], onRefresh: () => void 
                     // Draw barcode pattern
                     const barcodeText = selectedBook.barcode || `ID-${selectedBook.id}`;
                     ctx.fillStyle = '#1e293b';
-                    
+
                     // Generate readable bars
                     const barWidth = 4;
                     let x = 50;
-                    
+
                     for (let i = 0; i < 40; i++) {
                       const height = 60 + (Math.random() * 40);
-                      ctx.fillRect(x, 80 - height/2, barWidth, height);
+                      ctx.fillRect(x, 80 - height / 2, barWidth, height);
                       x += barWidth + 2;
                     }
 
@@ -2159,6 +2182,9 @@ function MembersView({ members, onRefresh }: { members: Member[], onRefresh: () 
   const { showAlert, showConfirm } = useAlert();
   const [memberStats, setMemberStats] = useState<{ total_loans_1_year: number } | null>(null);
   const [memberLoans, setMemberLoans] = useState<any[]>([]);
+  const [showBorrowingHistory, setShowBorrowingHistory] = useState(false);
+  const [borrowingHistory, setBorrowingHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const [formData, setFormData] = useState<Partial<Member>>({
     name: "",
     email: "",
@@ -2266,14 +2292,14 @@ function MembersView({ members, onRefresh }: { members: Member[], onRefresh: () 
       const ws = XLSX.utils.json_to_sheet(membersExportData);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Data Anggota");
-      
+
       // Auto-size columns
       const columnWidths = [15, 20, 20, 12, 15, 15, 12, 15];
       ws['!cols'] = columnWidths.map(width => ({ wch: width }));
-      
+
       const fileName = `data_anggota_${new Date().toISOString().split('T')[0]}.xlsx`;
       XLSX.writeFile(wb, fileName);
-      await showAlert("Data anggota berhasil dieksport!", "success");
+      await showAlert("Data anggota berhasil diexport, silahkan cek folder download!", "success");
     } catch (err) {
       console.error("Export error:", err);
       await showAlert("Gagal mengeksport data: " + err, "error");
@@ -2716,211 +2742,451 @@ function MembersView({ members, onRefresh }: { members: Member[], onRefresh: () 
       )}
 
       {modalType === "detail" && selectedMember && (
-        <div className="modal-overlay" style={{ backgroundColor: 'rgba(0, 0, 0, 0.4)', backdropFilter: 'blur(4px)', zIndex: 1000 }}>
+        <div className="modal-overlay" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
           <div className="modal-content" style={{
             width: '100%',
-            maxWidth: '650px',
+            maxWidth: '1000px',
             backgroundColor: 'white',
-            borderRadius: '24px',
+            borderRadius: '16px',
             overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
-            border: '1px solid #dbe0e6',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            maxHeight: '90vh'
           }}>
-            {/* Header with Background Gradient */}
-            <div style={{
-              padding: '32px 32px 24px',
-              background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
-              borderBottom: '1px solid #dbe0e6',
-              position: 'relative'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                <div style={{
-                  width: '80px',
-                  height: '80px',
-                  borderRadius: '20px',
-                  backgroundColor: 'white',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                  border: '1px solid #e2e8f0',
-                  color: 'var(--primary)',
-                  fontWeight: 900,
-                  fontSize: '32px'
-                }}>
-                  {selectedMember.name.charAt(0)}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-                    <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 900, color: '#111418', letterSpacing: '-0.02em' }}>{selectedMember.name}</h2>
-                    <span style={{
-                      padding: '4px 10px',
-                      borderRadius: '9999px',
-                      backgroundColor: selectedMember.status === 'Nonaktif' ? '#fee2e2' : '#dcfce7',
-                      color: selectedMember.status === 'Nonaktif' ? '#ef4444' : '#10b981',
-                      fontSize: '11px',
-                      fontWeight: 800,
-                      textTransform: 'uppercase'
-                    }}>
-                      {selectedMember.status || 'Aktif'}
-                    </span>
-                  </div>
-                  <p style={{ margin: 0, color: '#617589', fontSize: '14px', fontWeight: 500 }}>ID Anggota: <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)' }}>{selectedMember.member_code}</span></p>
-                </div>
-              </div>
+            <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
+
+              {/* Close Button */}
               <button
                 onClick={() => setModalType("none")}
-                style={{ position: 'absolute', top: '24px', right: '24px', background: 'white', border: '1px solid #e2e8f0', width: '36px', height: '36px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}
+                style={{ position: 'absolute', top: '16px', right: '16px', zIndex: 10, padding: '8px', color: '#94a3b8', background: 'transparent', border: 'none', cursor: 'pointer' }}
               >
-                <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>close</span>
+                <span className="material-symbols-outlined" style={{ fontSize: '24px' }}>close</span>
               </button>
-            </div>
 
-            {/* Content Body */}
-            <div style={{ padding: '32px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px', marginBottom: '32px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <p style={{ color: '#617589', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Kelas</p>
-                  <p style={{ color: '#111418', fontWeight: 700, fontSize: '16px', margin: 0 }}>{selectedMember.kelas || '-'}</p>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <p style={{ color: '#617589', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Jenis Kelamin</p>
-                  <p style={{ color: '#111418', fontWeight: 700, fontSize: '16px', margin: 0 }}>{selectedMember.jenis_kelamin || '-'}</p>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <p style={{ color: '#617589', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Nomor Telepon</p>
-                  <p style={{ color: '#111418', fontWeight: 700, fontSize: '16px', margin: 0 }}>{selectedMember.phone || '-'}</p>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <p style={{ color: '#617589', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Email</p>
-                  <p style={{ color: '#111418', fontWeight: 700, fontSize: '16px', margin: 0 }}>{selectedMember.email || '-'}</p>
-                </div>
-              </div>
-
-              {/* Stats Card */}
-              <div style={{
-                padding: '24px',
-                borderRadius: '20px',
-                backgroundColor: 'rgba(19, 127, 236, 0.05)',
-                border: '1px solid rgba(19, 127, 236, 0.1)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between'
-              }}>
-                <div>
-                  <p style={{ color: '#135bec', fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', margin: '0 0 4px' }}>Keaktifan Pinjam</p>
-                  <p style={{ fontSize: '14px', color: '#617589', margin: 0 }}>Aktivitas selama 1 tahun terakhir</p>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ textAlign: 'right' }}>
-                    <p style={{ fontSize: '32px', fontWeight: 900, color: '#111418', margin: 0 }}>{memberStats?.total_loans_1_year ?? '...'}</p>
-                    <p style={{ fontSize: '12px', fontWeight: 700, color: '#617589', margin: 0 }}>Total Buku Yang Dipinjam</p>
-                  </div>
-                  <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-                    <span className="material-symbols-outlined">menu_book</span>
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ marginTop: '24px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: '16px', color: '#94a3b8' }}>calendar_month</span>
-                <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>
-                  Terdaftar sejak: {selectedMember.joined_at ? new Date(selectedMember.joined_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}
-                </p>
-              </div>
-
-              {/* Borrowed Books List */}
-              <div style={{ marginTop: '32px', borderTop: '1px solid #f1f5f9', paddingTop: '24px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--primary)' }}>menu_book</span>
-                  <p style={{ color: '#111418', fontSize: '14px', fontWeight: 800, margin: 0 }}>Buku Sedang Dipinjam</p>
-                  <span style={{
-                    marginLeft: 'auto',
-                    padding: '2px 8px',
-                    borderRadius: '6px',
-                    backgroundColor: memberLoans.length > 0 ? 'rgba(19, 127, 236, 0.1)' : '#f1f5f9',
-                    color: memberLoans.length > 0 ? 'var(--primary)' : '#94a3b8',
-                    fontSize: '11px',
-                    fontWeight: 800
-                  }}>
-                    {memberLoans.length} Buku
-                  </span>
-                </div>
-
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-                  gap: '12px'
-                }}>
-                  {memberLoans.length > 0 ? memberLoans.map((loan, idx) => (
-                    <div key={idx} style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      padding: '10px',
-                      borderRadius: '12px',
-                      border: '1px solid #f1f5f9',
-                      backgroundColor: '#ffffff',
-                      transition: 'all 0.2s'
-                    }}>
+              <div style={{ padding: '32px' }}>
+                {/* Profile Header Section */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '32px' }}>
+                  {/* Tablet/Desktop Layout for Header */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+                      {/* Avatar */}
                       <div style={{
-                        width: '44px',
-                        height: '60px',
-                        borderRadius: '8px',
-                        overflow: 'hidden',
-                        backgroundColor: '#f8fafc',
-                        flexShrink: 0,
-                        border: '1px solid #f1f5f9'
+                        width: '80px',
+                        height: '80px',
+                        borderRadius: '16px',
+                        backgroundColor: '#e2e8f0',
+                        border: '4px solid #f8fafc',
+                        boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '32px',
+                        fontWeight: 'bold',
+                        color: '#64748b',
+                        overflow: 'hidden'
                       }}>
-                        {loan.book_cover ? (
-                          <img src={loan.book_cover} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        ) : (
-                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1' }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>image</span>
-                          </div>
-                        )}
+                        {/* Use initial if no image */}
+                        {selectedMember.name.charAt(0)}
                       </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: 700, color: '#111418', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{loan.book_title}</p>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <p style={{ margin: 0, fontSize: '12px', color: '#617589', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>event</span>
-                            {new Date(loan.loan_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}
+
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '4px' }}>
+                          <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a', margin: 0 }}>{selectedMember.name}</h1>
+                          <span style={{
+                            padding: '2px 10px',
+                            borderRadius: '9999px',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            backgroundColor: selectedMember.status === 'Nonaktif' ? '#fee2e2' : '#dcfce7',
+                            color: selectedMember.status === 'Nonaktif' ? '#b91c1c' : '#15803d',
+                            border: `1px solid ${selectedMember.status === 'Nonaktif' ? '#fecaca' : '#bbf7d0'}`,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.05em'
+                          }}>
+                            {selectedMember.status || 'Active'}
+                          </span>
+                        </div>
+                        <p style={{ color: '#64748b', fontSize: '14px', fontWeight: 500, margin: 0 }}>ID: {selectedMember.member_code}</p>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={() => { setFormData(selectedMember); setModalType("edit"); }}
+                        style={{
+                          padding: '8px 16px',
+                          backgroundColor: '#f1f5f9',
+                          color: '#334155',
+                          fontWeight: 700,
+                          fontSize: '14px',
+                          borderRadius: '8px',
+                          border: '1px solid #e2e8f0',
+                          cursor: 'pointer',
+                          transition: 'background-color 0.2s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e2e8f0'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+                      >
+                        Edit Profile
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '32px' }}>
+                  {/* Left Column */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                    <section style={{ backgroundColor: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #f1f5f9' }}>
+                      <h3 style={{ fontSize: '14px', fontWeight: 700, marginBottom: '16px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--primary)' }}>account_circle</span>
+                        Detail Siswa
+                      </h3>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+                          <span style={{ color: '#64748b', fontWeight: 500 }}>Gender</span>
+                          <span style={{ color: '#0f172a', fontWeight: 600 }}>{selectedMember.jenis_kelamin || '-'}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+                          <span style={{ color: '#64748b', fontWeight: 500 }}>Class/Grade</span>
+                          <span style={{ color: '#0f172a', fontWeight: 600 }}>{selectedMember.kelas || '-'}</span>
+                        </div>
+                        <div style={{ paddingTop: '8px', borderTop: '1px solid #e2e8f0' }}>
+                          <p style={{ color: '#64748b', fontSize: '10px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '2px' }}>Phone</p>
+                          <p style={{ color: 'var(--primary)', fontWeight: 600, fontSize: '12px', margin: 0 }}>{selectedMember.phone || '-'}</p>
+                        </div>
+                        <div>
+                          <p style={{ color: '#64748b', fontSize: '10px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '2px' }}>Email</p>
+                          <p style={{ color: 'var(--primary)', fontWeight: 600, fontSize: '12px', margin: 0 }}>{selectedMember.email || '-'}</p>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section style={{ backgroundColor: 'rgba(19, 127, 236, 0.05)', padding: '20px', borderRadius: '12px', border: '1px solid rgba(19, 127, 236, 0.1)' }}>
+                      <h3 style={{ fontSize: '14px', fontWeight: 700, marginBottom: '16px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--primary)' }}>analytics</span>
+                        Statistik
+                      </h3>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div style={{ backgroundColor: 'white', padding: '12px', borderRadius: '8px', border: '1px solid rgba(19, 127, 236, 0.1)' }}>
+                          <p style={{ color: '#94a3b8', fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>Total Peminjaman</p>
+                          <p style={{ fontSize: '24px', fontWeight: 900, color: 'var(--primary)', margin: 0 }}>{memberStats?.total_loans_1_year || 0}</p>
+                        </div>
+                        <div style={{ backgroundColor: 'white', padding: '12px', borderRadius: '8px', border: '1px solid rgba(19, 127, 236, 0.1)' }}>
+                          <p style={{ color: '#94a3b8', fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>Bergabung Sejak</p>
+                          <p style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 2px 0', color: '#0f172a' }}>
+                            {selectedMember.joined_at ? new Date(selectedMember.joined_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '-'}
                           </p>
-                          <span style={{ color: '#e2e8f0' }}>•</span>
-                          <p style={{ margin: 0, fontSize: '12px', fontWeight: 600, color: new Date(loan.due_date) < new Date() ? '#ef4444' : '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>history</span>
-                            {new Date(loan.due_date) < new Date() ? 'Terlambat' : `Kembali ${new Date(loan.due_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}`}
+                          <p style={{ fontSize: '9px', color: '#94a3b8', margin: 0 }}>
+                            {selectedMember.joined_at ? `${new Date().getFullYear() - new Date(selectedMember.joined_at).getFullYear()} yrs active` : ''}
                           </p>
                         </div>
                       </div>
+                    </section>
+                  </div>
+
+                  {/* Right Column: Borrowed Books */}
+                  <div style={{ gridColumn: 'span 1' }}> {/* In a larger grid this would be span 2 if we had 3 columns, but here we have auto-fit */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                      <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                        <span className="material-symbols-outlined" style={{ color: 'var(--primary)' }}>auto_stories</span>
+                        Currently Borrowed
+                      </h3>
+                      <span style={{ backgroundColor: '#f1f5f9', color: '#475569', fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '9999px' }}>
+                        {memberLoans.length} BUKU
+                      </span>
                     </div>
-                  )) : (
-                    <div style={{ padding: '24px', textAlign: 'center', backgroundColor: '#f8fafc', borderRadius: '16px', border: '1px dashed #e2e8f0' }}>
-                      <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Tidak ada peminjaman aktif saat ini.</p>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      {memberLoans.length > 0 ? memberLoans.map((loan, idx) => (
+                        <div key={idx} style={{ display: 'flex', gap: '12px', padding: '12px', borderRadius: '8px', backgroundColor: '#f8fafc', border: '1px solid #f1f5f9' }}>
+                          <div style={{ width: '48px', height: '72px', flexShrink: 0, backgroundColor: '#cbd5e1', borderRadius: '4px', overflow: 'hidden' }}>
+                            {/* Placeholder for book cover */}
+                            {loan.book_cover ? (
+                              <img src={loan.book_cover} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <span className="material-symbols-outlined" style={{ fontSize: '20px', color: '#94a3b8' }}>book</span>
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', overflow: 'hidden' }}>
+                            <h4 style={{ fontWeight: 700, color: '#0f172a', fontSize: '12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', margin: 0 }}>{loan.book_title}</h4>
+                            <p style={{
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              marginTop: '4px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              color: new Date(loan.due_date) < new Date() ? '#ef4444' : '#64748b'
+                            }}>
+                              {new Date(loan.due_date) < new Date() && <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>event_busy</span>}
+                              {new Date(loan.due_date) < new Date()
+                                ? `Overdue: ${new Date(loan.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                                : `Due: ${new Date(loan.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                              }
+                            </p>
+                          </div>
+                        </div>
+                      )) : (
+                        <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic', fontSize: '12px' }}>
+                          Tidak ada buku yang sedang dipinjam
+                        </div>
+                      )}
                     </div>
-                  )}
+
+                    <div style={{ marginTop: '24px', textAlign: 'center' }}>
+                      <button
+                        onClick={async () => {
+                          setLoadingHistory(true);
+                          try {
+                            const history = await safeInvoke("get_member_borrowing_history", { memberId: selectedMember.id });
+                            setBorrowingHistory(history || []);
+                          } catch (err) {
+                            console.error("Failed to fetch history:", err);
+                            setBorrowingHistory([]);
+                          }
+                          setLoadingHistory(false);
+                          setShowBorrowingHistory(true);
+                        }}
+                        style={{ color: 'var(--primary)', fontSize: '12px', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                      >
+                        View Full History
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      )}
 
-            {/* Footer */}
-            <div style={{ padding: '24px 32px', backgroundColor: '#f8fafc', borderTop: '1px solid #dbe0e6', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+      {/* Borrowing History Modal */}
+      {showBorrowingHistory && selectedMember && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.4)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1100,
+            padding: '16px'
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowBorrowingHistory(false); }}
+        >
+          <div style={{
+            backgroundColor: 'white',
+            width: '100%',
+            maxWidth: '960px',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            borderRadius: '12px',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            overflow: 'hidden',
+            border: '1px solid #e2e8f0'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '24px',
+              borderBottom: '1px solid #f1f5f9',
+              display: 'flex',
+              flexWrap: 'wrap',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              gap: '16px'
+            }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <h2 style={{ color: '#0f172a', fontSize: '24px', fontWeight: 700, letterSpacing: '-0.025em', margin: 0 }}>
+                  Riwayat Peminjaman <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: '18px' }}>(1 Tahun Terakhir)</span>
+                </h2>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '14px' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>person</span>
+                  <p style={{ margin: 0 }}>Anggota: <span style={{ fontWeight: 500, color: 'var(--primary)' }}>{selectedMember.name}</span></p>
+                  <span style={{ margin: '0 4px', color: '#cbd5e1' }}>•</span>
+                  <p style={{ margin: 0 }}>ID: {selectedMember.member_code}</p>
+                </div>
+              </div>
               <button
-                onClick={() => setModalType("none")}
-                style={{ padding: '12px 24px', borderRadius: '12px', border: '1px solid #dbe0e6', background: 'white', color: '#111418', fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}
+                onClick={() => setShowBorrowingHistory(false)}
+                style={{
+                  padding: '8px',
+                  borderRadius: '9999px',
+                  border: 'none',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  color: '#94a3b8',
+                  transition: 'background-color 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               >
-                Tutup
+                <span className="material-symbols-outlined">close</span>
               </button>
-              <button
-                onClick={() => { setFormData(selectedMember); setModalType("edit"); }}
-                style={{ padding: '12px 24px', borderRadius: '12px', background: 'var(--primary)', color: 'white', border: 'none', fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', boxShadow: '0 4px 6px -1px rgba(19, 91, 236, 0.2)' }}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>edit</span>
-                Edit Data
-              </button>
+            </div>
+
+            {/* Table Content - Scrollable */}
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              {loadingHistory ? (
+                <div style={{ padding: '48px', textAlign: 'center', color: '#94a3b8' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '48px', opacity: 0.3, animation: 'spin 1s linear infinite' }}>progress_activity</span>
+                  <p style={{ marginTop: '12px', fontWeight: 600 }}>Memuat data...</p>
+                </div>
+              ) : borrowingHistory.length === 0 ? (
+                <div style={{ padding: '48px', textAlign: 'center', color: '#94a3b8' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '48px', opacity: 0.3 }}>menu_book</span>
+                  <p style={{ marginTop: '12px', fontWeight: 600 }}>Tidak ada riwayat peminjaman</p>
+                </div>
+              ) : (
+                <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
+                  <thead style={{ position: 'sticky', top: 0, backgroundColor: '#f8fafc', zIndex: 10 }}>
+                    <tr>
+                      <th style={{ padding: '16px 24px', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', borderBottom: '1px solid #f1f5f9' }}>Judul Buku</th>
+                      <th style={{ padding: '16px 24px', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', borderBottom: '1px solid #f1f5f9' }}>Tanggal Pinjam</th>
+                      <th style={{ padding: '16px 24px', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', borderBottom: '1px solid #f1f5f9' }}>Tanggal Kembali</th>
+                      <th style={{ padding: '16px 24px', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', borderBottom: '1px solid #f1f5f9' }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {borrowingHistory.map((item: any, idx: number) => {
+                      const isReturned = item.status === 'returned';
+                      const isOverdue = item.status === 'borrowed' && new Date(item.due_date) < new Date();
+
+                      let statusLabel = 'Dipinjam';
+                      let statusBg = '#dbeafe';
+                      let statusColor = '#1d4ed8';
+                      let dotColor = '#3b82f6';
+
+                      if (isReturned) {
+                        statusLabel = 'Dikembalikan';
+                        statusBg = '#d1fae5';
+                        statusColor = '#047857';
+                        dotColor = '#10b981';
+                      } else if (isOverdue) {
+                        statusLabel = 'Terlambat';
+                        statusBg = '#ffe4e6';
+                        statusColor = '#b91c1c';
+                        dotColor = '#ef4444';
+                      }
+
+                      const formatDate = (dateStr: string) => {
+                        if (!dateStr) return '-';
+                        return new Date(dateStr).toLocaleDateString('sv-SE');
+                      };
+
+                      return (
+                        <tr
+                          key={idx}
+                          style={{ transition: 'background-color 0.15s', borderBottom: '1px solid #f1f5f9' }}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(248, 250, 252, 0.5)'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                        >
+                          <td style={{ padding: '16px 24px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                              <div style={{
+                                width: '32px',
+                                height: '48px',
+                                backgroundColor: '#f1f5f9',
+                                borderRadius: '4px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                overflow: 'hidden',
+                                flexShrink: 0
+                              }}>
+                                {item.book_cover ? (
+                                  <img src={item.book_cover} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                ) : (
+                                  <span className="material-symbols-outlined" style={{ color: '#94a3b8', fontSize: '18px' }}>book</span>
+                                )}
+                              </div>
+                              <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '14px' }}>{item.book_title}</span>
+                            </div>
+                          </td>
+                          <td style={{ padding: '16px 24px', color: '#475569', fontSize: '14px' }}>
+                            {formatDate(item.loan_date)}
+                          </td>
+                          <td style={{
+                            padding: '16px 24px',
+                            fontSize: '14px',
+                            color: isReturned ? '#475569' : '#ef4444',
+                            fontWeight: isReturned ? 400 : 500
+                          }}>
+                            {isReturned ? formatDate(item.return_date) : 'Belum dikembalikan'}
+                          </td>
+                          <td style={{ padding: '16px 24px' }}>
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              padding: '4px 10px',
+                              borderRadius: '6px',
+                              fontSize: '12px',
+                              fontWeight: 500,
+                              backgroundColor: statusBg,
+                              color: statusColor
+                            }}>
+                              <span style={{
+                                width: '6px',
+                                height: '6px',
+                                borderRadius: '9999px',
+                                backgroundColor: dotColor,
+                                marginRight: '6px'
+                              }}></span>
+                              {statusLabel}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{
+              padding: '24px',
+              backgroundColor: '#f8fafc',
+              borderTop: '1px solid #f1f5f9',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <div style={{ fontSize: '14px', color: '#64748b' }}>
+                Menampilkan <span style={{ fontWeight: 500 }}>{borrowingHistory.length}</span> data peminjaman
+              </div>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button
+                  onClick={() => setShowBorrowingHistory(false)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    padding: '0 24px',
+                    height: '44px',
+                    backgroundColor: 'var(--primary)',
+                    color: 'white',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    borderRadius: '8px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    boxShadow: '0 1px 3px 0 rgba(19, 127, 236, 0.2)',
+                    transition: 'all 0.15s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
+                  onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>arrow_back</span>
+                  Kembali ke Profil
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2972,7 +3238,7 @@ function LoansView({ onRefresh }: { onRefresh: () => void }) {
 
       setSelectedMember(member);
     } catch (err) {
-      await showAlert("Anggota tidak ditemukan: " + err);
+      await showAlert("Info: " + err);
       setSelectedMember(null);
     }
   };
@@ -3267,6 +3533,683 @@ function LoansView({ onRefresh }: { onRefresh: () => void }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+/* eslint-enable jsx-a11y/no-inline-styles */
+
+/* eslint-disable jsx-a11y/no-inline-styles */
+function SettingsView({ user, onProfileUpdate }: { user: User, onProfileUpdate: (u: User) => void }) {
+  const { showAlert, showConfirm } = useAlert();
+  const [profileName, setProfileName] = useState(user.name);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  const [settings, setSettings] = useState<{ [key: string]: string }>({
+    language: 'id',
+    theme: 'light',
+    barcode_path: ''
+  });
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    try {
+      const s = await safeInvoke('get_settings');
+      if (s) setSettings(s);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleUpdateSetting = async (key: string, value: string) => {
+    try {
+      await safeInvoke('update_setting', { key, value });
+      setSettings(prev => ({ ...prev, [key]: value }));
+      if (key === 'theme') {
+        document.documentElement.setAttribute('data-theme', value);
+      }
+    } catch (err) {
+      showAlert('Gagal menyimpan pengaturan: ' + err, 'error');
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    try {
+      const updatedUser = await safeInvoke('update_profile', { userId: user.id, name: profileName });
+      onProfileUpdate(updatedUser);
+      await showAlert('Profil berhasil diperbarui!', 'success');
+    } catch (err) {
+      await showAlert('Gagal menyimpan profil: ' + err, 'error');
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!oldPassword || !newPassword) {
+      await showAlert('Semua field harus diisi', 'warning');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      await showAlert('Kata sandi baru tidak cocok', 'error');
+      return;
+    }
+    if (newPassword.length < 6) {
+      await showAlert('Kata sandi minimal 6 karakter', 'warning');
+      return;
+    }
+    try {
+      await safeInvoke('change_password', { userId: user.id, oldPassword, newPassword });
+      await showAlert('Kata sandi berhasil diubah!', 'success');
+      setShowPasswordModal(false);
+      setOldPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err) {
+      await showAlert('Gagal mengubah kata sandi: ' + err, 'error');
+    }
+  };
+
+  const handleBackup = async () => {
+    try {
+      const path = await safeInvoke('backup_database');
+      await showAlert(`Database berhasil dicadangkan ke: ${path}`, 'success');
+    } catch (err) {
+      await showAlert('Gagal melakukan backup: ' + err, 'error');
+    }
+  };
+
+  const handleRestore = async () => {
+    await showAlert('Fitur restore database akan segera tersedia. Untuk saat ini silakan hubungi admin IT untuk restore manual file database.', 'info');
+  };
+
+  const handleReset = async () => {
+    const confirmed = await showConfirm('PERINGATAN: Semua data (Buku, Member, Peminjaman) akan dihapus permanen. Apakah Anda benar-benar yakin ingin mereset database?');
+    if (confirmed) {
+      try {
+        await safeInvoke('reset_database');
+        await showAlert('Database berhasil direset. Silakan muat ulang aplikasi.', 'success');
+        window.location.reload();
+      } catch (err) {
+        await showAlert('Gagal mereset database: ' + err, 'error');
+      }
+    }
+  };
+
+  // Section card style
+  const sectionStyle: React.CSSProperties = {
+    backgroundColor: 'var(--card-main)',
+    borderRadius: '12px',
+    boxShadow: '0 1px 3px 0 rgba(0,0,0,0.05)',
+    border: '1px solid var(--border-main)',
+    overflow: 'hidden'
+  };
+
+  const sectionHeaderStyle: React.CSSProperties = {
+    padding: '24px',
+    borderBottom: '1px solid var(--border-main)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    color: 'var(--text-main)'
+  };
+
+  return (
+    <div style={{ margin: '-40px' }}>
+      {/* Header */}
+      <header className="header-top" style={{ padding: '40px 40px 20px', marginBottom: 0, backgroundColor: 'var(--sidebar-main)', borderBottom: '1px solid var(--border-main)' }}>
+        <div className="header-title">
+          <h2 style={{ color: 'var(--text-main)' }}>Pengaturan</h2>
+          <p style={{ color: 'var(--text-muted)' }}>Kelola profil, preferensi sistem, dan database</p>
+        </div>
+        <button
+          onClick={handleSaveProfile}
+          className="btn-primary"
+          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 24px', borderRadius: '8px', fontWeight: 600 }}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: '1.125rem' }}>save</span>
+          Simpan Semua
+        </button>
+      </header>
+
+      {/* Settings Content */}
+      <div style={{ padding: '32px 40px 40px', maxWidth: '900px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '32px' }}>
+
+        {/* === 1. Profil Petugas === */}
+        <section style={sectionStyle}>
+          <div style={sectionHeaderStyle}>
+            <span className="material-symbols-outlined" style={{ color: 'var(--primary)' }}>person</span>
+            <h3 style={{ fontWeight: 700, fontSize: '18px', margin: 0 }}>Profil Petugas</h3>
+          </div>
+          <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            {/* Profile Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+              <div style={{ position: 'relative' }}>
+                <div style={{
+                  width: '96px',
+                  height: '96px',
+                  borderRadius: '9999px',
+                  backgroundColor: '#e2e8f0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '36px',
+                  fontWeight: 700,
+                  color: '#64748b',
+                  border: '4px solid #f8fafc',
+                  boxShadow: '0 1px 3px 0 rgba(0,0,0,0.1)'
+                }}>
+                  {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                </div>
+                <button style={{
+                  position: 'absolute',
+                  bottom: 0,
+                  right: 0,
+                  backgroundColor: 'var(--primary)',
+                  color: 'white',
+                  padding: '6px',
+                  borderRadius: '9999px',
+                  border: '2px solid white',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>edit</span>
+                </button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <h4 style={{ fontWeight: 700, fontSize: '18px', margin: 0, color: '#0f172a' }}>{user.name}</h4>
+                <p style={{ fontSize: '14px', color: '#64748b', margin: 0 }}>{user.role === 'admin' ? 'Administrator Utama Perpustakaan' : 'Staf Perpustakaan'}</p>
+                <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>ID: PETUGAS-{user.id}</p>
+              </div>
+            </div>
+
+            {/* Form Fields */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Nama Lengkap</label>
+                <input
+                  type="text"
+                  value={profileName}
+                  onChange={(e) => setProfileName(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-main)',
+                    backgroundColor: 'var(--bg-main)',
+                    fontSize: '14px',
+                    color: 'var(--text-main)',
+                    outline: 'none'
+                  }}
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Kata Sandi</label>
+                <button
+                  onClick={() => setShowPasswordModal(true)}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '10px 16px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-main)',
+                    backgroundColor: 'var(--bg-main)',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    transition: 'border-color 0.2s',
+                    color: 'var(--text-main)'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--primary)'}
+                  onMouseLeave={(e) => e.currentTarget.style.borderColor = '#e2e8f0'}
+                >
+                  <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Ganti kata sandi...</span>
+                  <span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--primary)' }}>lock_reset</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* === 2. Preferensi Sistem === */}
+        <section style={sectionStyle}>
+          <div style={sectionHeaderStyle}>
+            <span className="material-symbols-outlined" style={{ color: 'var(--primary)' }}>display_settings</span>
+            <h3 style={{ fontWeight: 700, fontSize: '18px', margin: 0 }}>Preferensi Sistem</h3>
+          </div>
+          <div style={{ padding: '0 24px' }}>
+            {/* Mode Tampilan */}
+            <div style={{ padding: '20px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9' }}>
+              <div>
+                <p style={{ fontWeight: 600, fontSize: '14px', margin: 0, color: '#0f172a' }}>Mode Tampilan</p>
+                <p style={{ fontSize: '12px', color: '#64748b', margin: '4px 0 0' }}>Pilih antara tema terang atau gelap sesuai kenyamanan mata.</p>
+              </div>
+              <div style={{ display: 'flex', backgroundColor: '#f1f5f9', padding: '4px', borderRadius: '8px' }}>
+                <button
+                  onClick={() => handleUpdateSetting('theme', 'light')}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    backgroundColor: settings.theme === 'light' ? 'white' : 'transparent',
+                    boxShadow: settings.theme === 'light' ? '0 1px 2px 0 rgba(0,0,0,0.05)' : 'none',
+                    border: 'none',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    cursor: 'pointer',
+                    color: settings.theme === 'light' ? '#0f172a' : '#64748b'
+                  }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>light_mode</span> Terang
+                </button>
+                <button
+                  onClick={() => handleUpdateSetting('theme', 'dark')}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    backgroundColor: settings.theme === 'dark' ? 'white' : 'transparent',
+                    boxShadow: settings.theme === 'dark' ? '0 1px 2px 0 rgba(0,0,0,0.05)' : 'none',
+                    border: 'none',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    cursor: 'pointer',
+                    color: settings.theme === 'dark' ? '#0f172a' : '#64748b'
+                  }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>dark_mode</span> Gelap
+                </button>
+              </div>
+            </div>
+
+            {/* Bahasa Aplikasi */}
+            <div style={{ padding: '20px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9' }}>
+              <div>
+                <p style={{ fontWeight: 600, fontSize: '14px', margin: 0, color: '#0f172a' }}>Bahasa Aplikasi</p>
+                <p style={{ fontSize: '12px', color: '#64748b', margin: '4px 0 0' }}>Gunakan bahasa pilihan Anda untuk antarmuka pengguna.</p>
+              </div>
+              <select
+                value={settings.language}
+                onChange={(e) => handleUpdateSetting('language', e.target.value)}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                  backgroundColor: '#f8fafc',
+                  fontSize: '14px',
+                  color: '#0f172a',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  minWidth: '150px'
+                }}>
+                <option value="id">Bahasa Indonesia</option>
+                <option value="en">English (US)</option>
+              </select>
+            </div>
+
+            {/* Lokasi Penyimpanan Barcode */}
+            <div style={{ padding: '20px 0', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <p style={{ fontWeight: 600, fontSize: '14px', margin: 0, color: '#0f172a' }}>Lokasi Penyimpanan Barcode</p>
+                <p style={{ fontSize: '12px', color: '#64748b', margin: '4px 0 0' }}>Folder tempat file barcode buku yang digenerasi akan disimpan secara lokal.</p>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '10px 16px',
+                  borderRadius: '8px',
+                  backgroundColor: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  fontSize: '12px',
+                  color: '#475569',
+                  fontFamily: 'monospace',
+                  overflow: 'hidden',
+                  whiteSpace: 'nowrap',
+                  textOverflow: 'ellipsis'
+                }}>
+                  {settings.barcode_path || 'Belum diatur (Default: Documents/LibAdmin)'}
+                </div>
+                <button
+                  onClick={async () => {
+                    // In a real app, use tauri dialog to pick a folder
+                    // For now, let's just simulate or provide a way to set it
+                    await showAlert('Pilih folder tidak didukung di lingkungan ini. Path akan diset ke default.', 'info');
+                    handleUpdateSetting('barcode_path', 'C:\\Users\\Admin\\Documents\\LibAdmin\\Barcodes\\');
+                  }}
+                  style={{
+                    padding: '10px 16px',
+                    backgroundColor: '#f1f5f9',
+                    borderRadius: '8px',
+                    border: 'none',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    cursor: 'pointer',
+                    transition: 'background-color 0.2s',
+                    color: '#0f172a'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e2e8f0'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>folder_open</span> Telusuri
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* === 3. Manajemen Database === */}
+        <section style={sectionStyle}>
+          <div style={sectionHeaderStyle}>
+            <span className="material-symbols-outlined" style={{ color: 'var(--primary)' }}>database</span>
+            <h3 style={{ fontWeight: 700, fontSize: '18px', margin: 0 }}>Manajemen Database</h3>
+          </div>
+          <div style={{ padding: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+              {/* Backup */}
+              <button
+                onClick={handleBackup}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '24px',
+                  borderRadius: '12px',
+                  border: '1px solid #e2e8f0',
+                  backgroundColor: '#f8fafc',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.backgroundColor = 'rgba(19, 127, 236, 0.03)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.backgroundColor = '#f8fafc'; }}
+              >
+                <div style={{
+                  width: '48px',
+                  height: '48px',
+                  borderRadius: '9999px',
+                  backgroundColor: 'rgba(19, 127, 236, 0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--primary)',
+                  transition: 'all 0.2s'
+                }}>
+                  <span className="material-symbols-outlined">backup</span>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ fontWeight: 700, fontSize: '14px', margin: 0, color: '#0f172a' }}>Backup Data</p>
+                  <p style={{ fontSize: '10px', color: '#64748b', margin: '4px 0 0' }}>Ekspor database ke lokal</p>
+                </div>
+              </button>
+
+              {/* Restore */}
+              <button
+                onClick={handleRestore}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '24px',
+                  borderRadius: '12px',
+                  border: '1px solid #e2e8f0',
+                  backgroundColor: '#f8fafc',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.backgroundColor = 'rgba(19, 127, 236, 0.03)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.backgroundColor = '#f8fafc'; }}
+              >
+                <div style={{
+                  width: '48px',
+                  height: '48px',
+                  borderRadius: '9999px',
+                  backgroundColor: 'rgba(19, 127, 236, 0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--primary)',
+                  transition: 'all 0.2s'
+                }}>
+                  <span className="material-symbols-outlined">restore_page</span>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ fontWeight: 700, fontSize: '14px', margin: 0, color: '#0f172a' }}>Restore Data</p>
+                  <p style={{ fontSize: '10px', color: '#64748b', margin: '4px 0 0' }}>Impor database dari file</p>
+                </div>
+              </button>
+
+              {/* Reset */}
+              <button
+                onClick={handleReset}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '24px',
+                  borderRadius: '12px',
+                  border: '1px solid #fecaca',
+                  backgroundColor: '#fef2f2',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#fee2e2'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#fef2f2'}
+              >
+                <div style={{
+                  width: '48px',
+                  height: '48px',
+                  borderRadius: '9999px',
+                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#ef4444',
+                  transition: 'all 0.2s'
+                }}>
+                  <span className="material-symbols-outlined">delete_forever</span>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ fontWeight: 700, fontSize: '14px', margin: 0, color: '#dc2626' }}>Reset Database</p>
+                  <p style={{ fontSize: '10px', color: '#f87171', margin: '4px 0 0' }}>Hapus semua data (Permanen)</p>
+                </div>
+              </button>
+            </div>
+
+            {/* Warning */}
+            <div style={{
+              marginTop: '16px',
+              padding: '16px',
+              backgroundColor: '#fffbeb',
+              border: '1px solid #fde68a',
+              borderRadius: '8px',
+              display: 'flex',
+              gap: '12px'
+            }}>
+              <span className="material-symbols-outlined" style={{ color: '#f59e0b', flexShrink: 0 }}>warning</span>
+              <p style={{ fontSize: '12px', color: '#92400e', lineHeight: 1.6, margin: 0 }}>
+                <strong>Peringatan Keamanan:</strong> Pastikan Anda telah melakukan backup sebelum menjalankan pemulihan atau reset database. Tindakan reset tidak dapat dibatalkan.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* === 4. Tentang Aplikasi === */}
+        <section style={sectionStyle}>
+          <div style={sectionHeaderStyle}>
+            <span className="material-symbols-outlined" style={{ color: 'var(--primary)' }}>info</span>
+            <h3 style={{ fontWeight: 700, fontSize: '18px', margin: 0 }}>Tentang Aplikasi</h3>
+          </div>
+          <div style={{ padding: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '32px' }}>
+              <div style={{
+                width: '96px',
+                height: '96px',
+                backgroundColor: 'rgba(19, 127, 236, 0.1)',
+                borderRadius: '16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--primary)',
+                flexShrink: 0
+              }}>
+                <span className="material-symbols-outlined" style={{ fontSize: '56px' }}>menu_book</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <h4 style={{ fontSize: '20px', fontWeight: 800, letterSpacing: '-0.025em', margin: 0, color: '#0f172a' }}>LibAdmin Pro — Offline Edition</h4>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={{
+                    padding: '2px 8px',
+                    backgroundColor: '#f1f5f9',
+                    borderRadius: '4px',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.1em',
+                    color: '#64748b'
+                  }}>Versi 1.0.0 (Stable)</span>
+                  <span style={{
+                    padding: '2px 8px',
+                    backgroundColor: '#d1fae5',
+                    borderRadius: '4px',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.1em',
+                    color: '#059669'
+                  }}>Lisensi Aktif</span>
+                </div>
+                <p style={{ fontSize: '14px', color: '#64748b', margin: 0, maxWidth: '440px' }}>
+                  Solusi manajemen perpustakaan desktop modern yang berjalan sepenuhnya secara luring untuk keamanan data maksimal.
+                </p>
+                <div style={{ paddingTop: '4px' }}>
+                  <button style={{
+                    color: 'var(--primary)',
+                    fontSize: '14px',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: 0
+                  }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>cloud_sync</span> Cek Pembaruan Offline
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style={{
+            padding: '16px 24px',
+            backgroundColor: '#f8fafc',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            fontSize: '10px',
+            color: '#94a3b8'
+          }}>
+            <p style={{ margin: 0 }}>&copy; 2024 LibAdmin Software Solution.</p>
+            <p style={{ margin: 0 }}>SMA Persada Bunda</p>
+          </div>
+        </section>
+      </div>
+
+      {/* Password Change Modal */}
+      {showPasswordModal && (
+        <div className="modal-overlay" style={{ zIndex: 1100 }}>
+          <div className="modal-content" style={{
+            maxWidth: '480px',
+            backgroundColor: 'white',
+            borderRadius: '16px',
+            overflow: 'hidden'
+          }}>
+            <div style={{
+              padding: '20px 24px',
+              borderBottom: '1px solid #e2e8f0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ backgroundColor: 'rgba(19, 127, 236, 0.1)', padding: '8px', borderRadius: '8px' }}>
+                  <span className="material-symbols-outlined" style={{ color: 'var(--primary)', fontSize: '20px' }}>lock_reset</span>
+                </div>
+                <h2 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700, color: '#1f2937' }}>Ganti Kata Sandi</h2>
+              </div>
+              <button
+                onClick={() => setShowPasswordModal(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>Kata Sandi Lama</label>
+                <input
+                  type="password"
+                  value={oldPassword}
+                  onChange={(e) => setOldPassword(e.target.value)}
+                  placeholder="Masukkan kata sandi lama"
+                  style={{ padding: '10px 14px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '14px', outline: 'none' }}
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>Kata Sandi Baru</label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Masukkan kata sandi baru"
+                  style={{ padding: '10px 14px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '14px', outline: 'none' }}
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>Konfirmasi Kata Sandi Baru</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Ulangi kata sandi baru"
+                  style={{ padding: '10px 14px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '14px', outline: 'none' }}
+                />
+              </div>
+            </div>
+            <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button
+                onClick={() => setShowPasswordModal(false)}
+                className="btn-white"
+                style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 500, border: '1px solid #d1d5db' }}
+              >Batal</button>
+              <button
+                onClick={handleChangePassword}
+                className="btn-primary"
+                style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>check</span>
+                Ubah Kata Sandi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

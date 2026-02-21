@@ -204,7 +204,10 @@ pub async fn borrow_book(
 
 #[tauri::command]
 pub async fn return_book(pool: State<'_, SqlitePool>, loan_id: i64) -> Result<(), String> {
-    let mut tx = pool.begin().await.map_err(|e| format!("Failed to start transaction: {}", e))?;
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| format!("Failed to start transaction: {}", e))?;
 
     let loan = sqlx::query_as::<_, Loan>("SELECT * FROM loans WHERE id = ?")
         .bind(loan_id)
@@ -218,14 +221,12 @@ pub async fn return_book(pool: State<'_, SqlitePool>, loan_id: i64) -> Result<()
 
     let return_date = Utc::now();
 
-    sqlx::query(
-        "UPDATE loans SET return_date = ?, status = 'returned' WHERE id = ?",
-    )
-    .bind(return_date)
-    .bind(loan_id)
-    .execute(&mut *tx)
-    .await
-    .map_err(|e| format!("Loan couldnt update: {}", e))?;
+    sqlx::query("UPDATE loans SET return_date = ?, status = 'returned' WHERE id = ?")
+        .bind(return_date)
+        .bind(loan_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| format!("Loan couldnt update: {}", e))?;
 
     sqlx::query(
         "UPDATE books SET available_copy = available_copy + 1, status = CASE WHEN available_copy + 1 > 0 THEN 'Tersedia' ELSE status END WHERE id = ?",
@@ -248,7 +249,7 @@ pub async fn get_recent_returns(
     limit: Option<i64>,
 ) -> Result<Vec<LoanDetail>, String> {
     let limit_val = limit.unwrap_or(10);
-    
+
     let sql = r#"
         SELECT 
             l.id, l.book_id, l.member_id,
@@ -490,7 +491,7 @@ pub async fn find_member_by_code(
 
     match member {
         Some(m) => Ok(m),
-        None => Err("Anggota tidak ditemukan".to_string()),
+        None => Err("Anggota Member tidak ditemukan".to_string()),
     }
 }
 
@@ -630,6 +631,51 @@ pub async fn get_member_loans(
     Ok(loans)
 }
 
+#[derive(Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
+pub struct MemberBorrowingHistoryItem {
+    pub id: i64,
+    pub book_id: i64,
+    pub book_title: String,
+    pub book_isbn: String,
+    pub book_cover: Option<String>,
+    pub loan_date: chrono::DateTime<chrono::Utc>,
+    pub due_date: chrono::DateTime<chrono::Utc>,
+    pub return_date: Option<chrono::DateTime<chrono::Utc>>,
+    pub status: String,
+}
+
+#[tauri::command]
+pub async fn get_member_borrowing_history(
+    pool: State<'_, SqlitePool>,
+    member_id: i64,
+) -> Result<Vec<MemberBorrowingHistoryItem>, String> {
+    let loans = sqlx::query_as::<_, MemberBorrowingHistoryItem>(
+        r#"
+        SELECT 
+            l.id,
+            l.book_id,
+            b.title as book_title,
+            b.isbn as book_isbn,
+            b.cover as book_cover,
+            l.loan_date,
+            l.due_date,
+            l.return_date,
+            l.status
+        FROM loans l
+        JOIN books b ON l.book_id = b.id
+        WHERE l.member_id = ?
+        AND l.loan_date >= datetime('now', '-1 year')
+        ORDER BY l.loan_date DESC
+        "#,
+    )
+    .bind(member_id)
+    .fetch_all(&*pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(loans)
+}
+
 #[tauri::command]
 pub async fn get_member_stats(
     pool: State<'_, SqlitePool>,
@@ -682,8 +728,6 @@ pub async fn get_member_stats(
     .fetch_one(&*pool)
     .await
     .map_err(|e| e.to_string())?;
-
-
 
     Ok(MemberStats {
         total_loans_30_days,
