@@ -9,19 +9,23 @@ pub async fn update_profile(
     pool: State<'_, SqlitePool>,
     user_id: i64,
     name: String,
+    avatar: Option<String>,
 ) -> Result<User, String> {
-    sqlx::query("UPDATE users SET name = ? WHERE id = ?")
+    sqlx::query("UPDATE users SET name = ?, avatar = ? WHERE id = ?")
         .bind(&name)
+        .bind(&avatar)
         .bind(user_id)
         .execute(&*pool)
         .await
         .map_err(|e| e.to_string())?;
 
-    let user = sqlx::query_as::<_, User>("SELECT id, username, name, role FROM users WHERE id = ?")
-        .bind(user_id)
-        .fetch_one(&*pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    let user = sqlx::query_as::<_, User>(
+        "SELECT id, username, name, role, avatar FROM users WHERE id = ?",
+    )
+    .bind(user_id)
+    .fetch_one(&*pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
     Ok(user)
 }

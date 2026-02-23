@@ -43,6 +43,7 @@ interface User {
   username: string;
   name: string;
   role: string;
+  avatar?: string;
 }
 
 interface LoanDetail {
@@ -62,14 +63,31 @@ interface LoanDetail {
   member_status?: string;
 }
 
+interface FineWithDetails {
+  id: number;
+  loan_id: number;
+  member_id: number;
+  member_name: string;
+  member_code: string;
+  member_kelas?: string;
+  book_title: string;
+  loan_date: string;
+  due_date: string;
+  return_date: string | null;
+  amount: number;
+  fine_type: string;
+  status: string;
+  paid_at: string | null;
+}
+
 // Helper to handle invoke safely in browser for preview
 const safeInvoke = async (cmd: string, args: any = {}): Promise<any> => {
   if (window.hasOwnProperty("__TAURI_INTERNALS__") || window.hasOwnProperty("__TAURI__")) {
     return await invoke(cmd, args);
   }
 
-  // Mock data for Browser Preview
-  console.warn(`Browser Preview: Mocking Tauri command "${cmd}"`);
+  // Fallback for non-Tauri environment (development only)
+  console.warn(`Environment: Mocking Tauri command "${cmd}"`);
 
   if (cmd === "login") {
     if (args.username === "admin" && args.password === "admin123") {
@@ -80,49 +98,24 @@ const safeInvoke = async (cmd: string, args: any = {}): Promise<any> => {
   }
 
   const mocks: any = {
-    "get_book_borrowers": [],
-    "get_stats": { total_books: 12450, total_members: 892, active_loans: 45, overdue_loans: 12 },
-    "get_books": [
-      { id: 1, title: "Laskar Pelangi", author: "Andrea Hirata", isbn: "978-979-3062-79-1", category: "Fiksi", total_copy: 8, available_copy: 5 },
-      { id: 2, title: "Bumi Manusia", author: "Pramoedya Ananta Toer", isbn: "978-602-9144-01-6", category: "Sejarah", total_copy: 12, available_copy: 8 },
-      { id: 3, title: "Clean Code", author: "Robert C. Martin", isbn: "978-013-2350-88-4", category: "Teknologi", total_copy: 5, available_copy: 3 },
-      { id: 4, title: "The Midnight Library", author: "Matt Haig", isbn: "978-052-5559-47-4", category: "Fiksi", total_copy: 10, available_copy: 0 },
-      { id: 5, title: "Sapiens", author: "Yuval Noah Harari", isbn: "978-006-2316-09-7", category: "Sejarah", total_copy: 15, available_copy: 12 }
-    ],
-    "get_members": [
-      { id: 1, member_code: "MBR001", name: "Budi Santoso", email: "budi@mail.com", phone: "0812345" }
-    ],
-    "get_active_loans": [
-      { id: 1, book_title: "Atomic Habits", member_name: "Michael Chen", loan_date: new Date().toISOString(), due_date: new Date(Date.now() + 604800000).toISOString(), status: "borrowed" }
-    ],
-    "get_recent_activity": [
-      { id: "L-1", title: "Michael Chen", description: 'meminjam "Atomic Habits"', time: new Date().toISOString(), type_name: "loan" },
-      { id: "M-1", title: "Sarah Williams", description: "Bergabung sebagai anggota baru", time: new Date(Date.now() - 3600000).toISOString(), type_name: "member" }
-    ],
-    "get_weekly_circulation": [
-      { day: "Minggu", count: 12 }, { day: "Senin", count: 25 }, { day: "Selasa", count: 18 }, { day: "Rabu", count: 32 }, { day: "Kamis", count: 45 }, { day: "Jumat", count: 28 }, { day: "Sabtu", count: 15 }
-    ],
-    "get_member_loans": [
-      { id: 1, book_title: "Atomic Habits", member_name: "Michael Chen", member_code: "MBR001", loan_date: new Date().toISOString(), due_date: new Date(Date.now() + 604800000).toISOString(), status: "borrowed", member_status: "Aktif" }
-    ],
-    "get_member_borrowing_history": [
-      { id: 1, book_id: 1, book_title: "Laskar Pelangi", book_isbn: "978-979-3062-79-1", loan_date: "2025-11-12T00:00:00Z", due_date: "2025-11-26T00:00:00Z", return_date: "2025-11-26T00:00:00Z", status: "returned" },
-      { id: 2, book_id: 2, book_title: "Bumi Manusia", book_isbn: "978-602-9144-01-6", loan_date: "2025-05-01T00:00:00Z", due_date: "2025-05-15T00:00:00Z", return_date: null, status: "borrowed" },
-      { id: 3, book_id: 3, book_title: "Clean Code", book_isbn: "978-013-2350-88-4", loan_date: "2025-02-15T00:00:00Z", due_date: "2025-03-01T00:00:00Z", return_date: "2025-03-01T00:00:00Z", status: "returned" },
-      { id: 4, book_id: 4, book_title: "The Midnight Library", book_isbn: "978-052-5559-47-4", loan_date: "2025-06-10T00:00:00Z", due_date: "2025-06-24T00:00:00Z", return_date: null, status: "borrowed" },
-      { id: 5, book_id: 5, book_title: "Sapiens", book_isbn: "978-006-2316-09-7", loan_date: "2024-12-05T00:00:00Z", due_date: "2024-12-19T00:00:00Z", return_date: "2024-12-19T00:00:00Z", status: "returned" },
-      { id: 6, book_id: 1, book_title: "Educated", book_isbn: "978-979-3062-79-1", loan_date: "2025-01-20T00:00:00Z", due_date: "2025-02-03T00:00:00Z", return_date: "2025-02-03T00:00:00Z", status: "returned" }
-    ],
-    "find_active_loan": [
-      { id: 1, book_title: "Atomic Habits", book_isbn: "978-052-5559-47-4", member_name: "Michael Chen", member_code: "MBR001", member_status: "Aktif", loan_date: new Date().toISOString(), due_date: new Date(Date.now() + 604800000).toISOString(), status: "borrowed", member_active_loans: 1 }
-    ],
-    "get_overdue_loans": []
+    "get_stats": { total_books: 0, total_members: 0, active_loans: 0, overdue_loans: 0, monthly_new_members: 0, total_loans_count: 0 },
+    "get_books": [],
+    "get_members": [],
+    "get_active_loans": [],
+    "get_recent_activity": [],
+    "get_weekly_circulation": [],
+    "get_member_loans": [],
+    "get_member_borrowing_history": [],
+    "find_active_loan": [],
+    "get_overdue_loans": [],
+    "get_settings": { theme: 'light', language: 'id', fine_late_per_day: '1000' }
   };
 
   return mocks[cmd] || (cmd.startsWith("add_") ? 1 : null);
 };
 
 function App() {
+  const { showConfirm } = useAlert();
   const [user, setUser] = useState<User | null>(null);
   const [view, setView] = useState("dashboard");
   const [books, setBooks] = useState<Book[]>([]);
@@ -210,9 +203,22 @@ function App() {
           >
             <span className="material-symbols-outlined">group</span> Data Anggota
           </button>
+          <button
+            className={`nav-item ${view === "fines" ? "active" : ""}`}
+            onClick={() => setView("fines")}
+          >
+            <span className="material-symbols-outlined">payments</span> Manajemen Denda
+          </button>
         </nav>
         <div style={{ marginTop: 'auto' }}>
-          <button className="nav-item" onClick={() => setUser(null)} style={{ color: '#ef4444' }}>
+          <button
+            className="nav-item"
+            onClick={async () => {
+              const confirmed = await showConfirm("Apakah Anda yakin ingin keluar dari aplikasi?");
+              if (confirmed) setUser(null);
+            }}
+            style={{ color: '#ef4444' }}
+          >
             <span className="material-symbols-outlined">logout</span> Keluar
           </button>
           <button className={`nav-item ${view === "settings" ? "active" : ""}`} onClick={() => setView("settings")}>
@@ -223,7 +229,13 @@ function App() {
 
         <div className="sidebar-footer">
           <div className="profile-card">
-            <div className="profile-img"></div>
+            <div className="profile-img" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, color: 'var(--primary)', overflow: 'hidden', backgroundColor: 'rgba(19, 91, 236, 0.1)' }}>
+              {user.avatar ? (
+                <img src={user.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                user.name.charAt(0)
+              )}
+            </div>
             <div className="profile-info">
               <p>{user.name}</p>
               <p>{user.role === 'admin' ? 'Administrator' : 'Staf Pustaka'}</p>
@@ -260,6 +272,7 @@ function App() {
               />
             )}
             {view === "returns" && <ReturnsView />}
+            {view === "fines" && <FinesView setView={setView} />}
             {view === "settings" && <SettingsView user={user} onProfileUpdate={setUser} />}
           </motion.div>
         </AnimatePresence>
@@ -274,12 +287,27 @@ function ReturnsView() {
   const [selectedLoan, setSelectedLoan] = useState<LoanDetail | null>(null);
   const [recentReturns, setRecentReturns] = useState<LoanDetail[]>([]);
   const [overdueList, setOverdueList] = useState<LoanDetail[]>([]);
+  const [condition, setCondition] = useState("Bagus");
+  const [damageCategory, setDamageCategory] = useState<string | null>(null);
+  const [settings, setSettings] = useState<{ [key: string]: string }>({
+    fine_late_per_day: '1000'
+  });
   const { showAlert, showConfirm } = useAlert();
 
   useEffect(() => {
     loadOverdue();
     loadRecentReturns();
+    loadSettings();
   }, []);
+
+  const loadSettings = async () => {
+    try {
+      const s = await safeInvoke('get_settings');
+      if (s) setSettings(prev => ({ ...prev, ...s }));
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const loadRecentReturns = async () => {
     try {
@@ -329,8 +357,21 @@ function ReturnsView() {
     const confirmed = await showConfirm(`Selesaikan pengembalian buku "${loan.book_title}"?`);
     if (confirmed) {
       try {
-        await safeInvoke("return_book", { loanId: loan.id });
-        await showAlert("Buku berhasil dikembalikan!", "success");
+        await safeInvoke("return_book", {
+          loanId: loan.id,
+          bookCondition: condition,
+          damageCategory: condition === "Rusak" ? damageCategory : null
+        });
+
+        if (condition === "Rusak") {
+          await showAlert("Buku dikembalikan dengan kerusakan. Denda telah otomatis masuk ke Manajemen Denda.", "info");
+        } else {
+          await showAlert("Buku berhasil dikembalikan!", "success");
+        }
+
+        // Reset state
+        setCondition("Bagus");
+        setDamageCategory(null);
 
         // Update local state
         const remaining = activeLoans.filter(l => l.id !== loan.id);
@@ -358,6 +399,13 @@ function ReturnsView() {
     const diffTime = now.getTime() - due.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays > 0 ? diffDays : 0;
+  };
+
+  const calculateFine = (dueDateStr: string) => {
+    const daysLate = getDaysLate(dueDateStr);
+    const finePerDay = parseInt(settings.fine_late_per_day) || 0;
+
+    return daysLate * finePerDay;
   };
 
   return (
@@ -518,12 +566,100 @@ function ReturnsView() {
                           {formatDate(selectedLoan.due_date)}
                         </p>
                         <p style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                          {getDaysLate(selectedLoan.due_date) > 0 ? `Terlambat ${getDaysLate(selectedLoan.due_date)} hari` : 'Masih dalam periode pinjam'}
+                          {getDaysLate(selectedLoan.due_date) > 0
+                            ? `Terlambat ${getDaysLate(selectedLoan.due_date)} hari (Denda: Rp ${calculateFine(selectedLoan.due_date).toLocaleString('id-ID')})`
+                            : 'Masih dalam periode pinjam'}
                         </p>
                       </div>
                     </div>
 
+                    <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '24px', marginTop: '8px' }}>
+                      <p style={{ fontSize: '0.625rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em', marginBottom: '12px' }}>Kondisi Buku Saat Kembali</p>
+                      <div style={{ display: 'flex', gap: '12px', marginBottom: condition === "Rusak" ? '16px' : '0' }}>
+                        <button
+                          onClick={() => { setCondition("Bagus"); setDamageCategory(null); }}
+                          style={{
+                            flex: 1,
+                            padding: '12px',
+                            borderRadius: '10px',
+                            border: condition === "Bagus" ? '2px solid #10b981' : '1px solid #e2e8f0',
+                            backgroundColor: condition === "Bagus" ? '#f0fdf4' : 'white',
+                            color: condition === "Bagus" ? '#16a34a' : '#64748b',
+                            fontWeight: 700,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '8px',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>check_circle</span>
+                          Bagus / Utuh
+                        </button>
+                        <button
+                          onClick={() => { setCondition("Rusak"); setDamageCategory("Ringan"); }}
+                          style={{
+                            flex: 1,
+                            padding: '12px',
+                            borderRadius: '10px',
+                            border: condition === "Rusak" ? '2px solid #ef4444' : '1px solid #e2e8f0',
+                            backgroundColor: condition === "Rusak" ? '#fef2f2' : 'white',
+                            color: condition === "Rusak" ? '#ef4444' : '#64748b',
+                            fontWeight: 700,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '8px',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>warning</span>
+                          Rusak / Cacat
+                        </button>
+                      </div>
 
+                      {condition === "Rusak" && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          style={{
+                            padding: '16px',
+                            backgroundColor: '#f8fafc',
+                            borderRadius: '12px',
+                            border: '1px solid #e2e8f0'
+                          }}
+                        >
+                          <p style={{ fontSize: '0.688rem', fontWeight: 700, color: '#475569', marginBottom: '12px' }}>Kategori Kerusakan:</p>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            {["Ringan", "Sedang", "Berat"].map((cat) => (
+                              <button
+                                key={cat}
+                                onClick={() => setDamageCategory(cat)}
+                                style={{
+                                  flex: 1,
+                                  padding: '8px',
+                                  borderRadius: '8px',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 700,
+                                  border: damageCategory === cat ? '2px solid #f97316' : '1px solid #e2e8f0',
+                                  backgroundColor: damageCategory === cat ? '#fff7ed' : 'white',
+                                  color: damageCategory === cat ? '#ea580c' : '#64748b',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s'
+                                }}
+                              >
+                                {cat}
+                              </button>
+                            ))}
+                          </div>
+                          <p style={{ fontSize: '0.625rem', color: '#94a3b8', marginTop: '12px', fontStyle: 'italic' }}>
+                            * Denda kerusakan akan ditambahkan otomatis ke tagihan anggota.
+                          </p>
+                        </motion.div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -678,6 +814,571 @@ function ReturnsView() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function FinesView({ setView }: { setView: (v: string) => void }) {
+  const [fines, setFines] = useState<FineWithDetails[]>([]);
+  const [fineSettings, setFineSettings] = useState({
+    fine_late_per_day: "1000",
+    fine_damage_light: "15000",
+    fine_damage_medium: "50000",
+    fine_damage_heavy: "100000"
+  });
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [selectedFine, setSelectedFine] = useState<FineWithDetails | null>(null);
+  const [memberFines, setMemberFines] = useState<FineWithDetails[]>([]);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [amountPaid, setAmountPaid] = useState(0);
+  const { showAlert, showConfirm } = useAlert();
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const [f, s] = await Promise.all([
+        safeInvoke("get_fines"),
+        safeInvoke("get_settings")
+      ]);
+      if (Array.isArray(f)) setFines(f);
+      if (s) setFineSettings(prev => ({ ...prev, ...s }));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleOpenDetail = async (fine: FineWithDetails) => {
+    try {
+      const allMemberFines = await safeInvoke("get_fines_by_member", { memberId: fine.member_id });
+      setMemberFines(allMemberFines || []);
+      setSelectedFine(fine);
+      const totalUnpaid = allMemberFines.filter((f: any) => f.status === 'Unpaid').reduce((sum: number, f: any) => sum + f.amount, 0);
+      setAmountPaid(totalUnpaid);
+      setShowDetailModal(true);
+    } catch (err) {
+      console.error("Failed to load member fines:", err);
+      setSelectedFine(fine);
+      setMemberFines([fine]);
+      setAmountPaid(fine.amount);
+      setShowDetailModal(true);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    try {
+      await Promise.all(Object.entries(fineSettings).map(([key, value]) =>
+        safeInvoke("update_setting", { key, value: value.toString() })
+      ));
+      await showAlert("Pengaturan denda berhasil disimpan!", "success");
+    } catch (err) {
+      await showAlert("Gagal menyimpan pengaturan: " + err, "error");
+    }
+  };
+
+  const handlePay = async (fine: FineWithDetails) => {
+    const confirmed = await showConfirm(`Konfirmasi pembayaran denda Rp ${fine.amount.toLocaleString('id-ID')} untuk ${fine.member_name}?`);
+    if (confirmed) {
+      try {
+        await safeInvoke("pay_fine", { fineId: fine.id });
+        await showAlert("Pembayaran berhasil dicatat!", "success");
+        loadData();
+      } catch (err) {
+        await showAlert("Gagal mencatat pembayaran: " + err, "error");
+      }
+    }
+  };
+
+  const handleProcessLunas = async () => {
+    if (!selectedFine) return;
+    const unpaidFines = memberFines.filter(f => f.status === 'Unpaid');
+
+    const confirmed = await showConfirm(`Proses pelunasan ${unpaidFines.length} tagihan senilai Rp ${unpaidFines.reduce((sum, f) => sum + f.amount, 0).toLocaleString('id-ID')}?`);
+
+    if (confirmed) {
+      try {
+        await Promise.all(unpaidFines.map(f => safeInvoke("pay_fine", { fineId: f.id })));
+        await showAlert("Semua tagihan berhasil dilunasi!", "success");
+        setShowDetailModal(false);
+        loadData();
+      } catch (err) {
+        await showAlert("Gagal melunasi tagihan: " + err, "error");
+      }
+    }
+  };
+
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return "-";
+    return new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  const filteredFines = fines.filter(f => {
+    const matchesSearch = f.member_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      f.book_title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      f.member_code.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter === "" || f.status.toLowerCase() === statusFilter.toLowerCase();
+    return matchesSearch && matchesStatus;
+  });
+
+  return (
+    <div style={{ margin: '-40px' }}>
+      <header className="header-top" style={{ padding: '40px 40px 20px', marginBottom: 0, backgroundColor: 'white', borderBottom: '1px solid var(--border-main)' }}>
+        <div className="header-title">
+          <h2 style={{ fontSize: '1.75rem', fontWeight: 900, color: '#1e293b' }}>Manajemen Denda</h2>
+          <p style={{ color: '#64748b', fontSize: '0.875rem' }}>Pantau dan kelola tagihan denda keterlambatan atau kerusakan buku.</p>
+        </div>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <div className="search-box">
+            <span className="material-symbols-outlined search-icon">search</span>
+            <input
+              type="text"
+              className="search-input"
+              placeholder="Cari nama, ID, atau judul buku..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <button
+            onClick={() => setShowSettingsModal(true)}
+            className="action-btn-circle"
+            style={{ width: '48px', height: '48px', backgroundColor: 'white', border: '1px solid var(--border-main)', borderRadius: '12px' }}
+            title="Konfigurasi Denda"
+          >
+            <span className="material-symbols-outlined" style={{ color: '#64748b' }}>settings</span>
+          </button>
+        </div>
+      </header>
+
+      {/* Breadcrumbs & Filter Bar */}
+      <section style={{ padding: '16px 40px', backgroundColor: '#f8fafc', borderBottom: '1px solid var(--border-main)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.813rem', color: '#64748b' }}>
+          <span style={{ cursor: 'pointer' }} onClick={() => setView("dashboard")}>Dashboard</span>
+          <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>chevron_right</span>
+          <span style={{ color: 'var(--primary)', fontWeight: 700 }}>Denda</span>
+        </div>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.813rem', fontWeight: 600, color: '#64748b' }}>Status:</span>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-main)', fontSize: '0.813rem', fontWeight: 600, color: '#475569', outline: 'none', cursor: 'pointer' }}
+          >
+            <option value="">Semua Status</option>
+            <option value="Unpaid">Belum Lunas</option>
+            <option value="Paid">Lunas</option>
+          </select>
+        </div>
+      </section>
+
+      <div style={{ padding: '32px 40px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {/* Fines Table Section */}
+          <div className="content-card" style={{ borderRadius: '16px', overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left', paddingLeft: '24px' }}>Anggota</th>
+                    <th style={{ textAlign: 'left' }}>Buku</th>
+                    <th style={{ textAlign: 'left' }}>Pelanggaran</th>
+                    <th style={{ textAlign: 'left' }}>Jumlah</th>
+                    <th style={{ textAlign: 'center' }}>Status</th>
+                    <th style={{ textAlign: 'right', paddingRight: '24px' }}>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredFines.length > 0 ? filteredFines.map((fine) => (
+                    <tr key={fine.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ paddingLeft: '24px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <div style={{ width: '36px', height: '36px', borderRadius: '10px', backgroundColor: 'rgba(19, 127, 236, 0.1)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.813rem', fontWeight: 800 }}>
+                            {fine.member_name.charAt(0)}
+                          </div>
+                          <div>
+                            <p style={{ fontSize: '0.875rem', fontWeight: 700, color: '#1e293b', margin: 0 }}>{fine.member_name}</p>
+                            <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: 0 }}>{fine.member_code}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <p style={{ fontSize: '0.875rem', fontWeight: 600, color: '#475569', margin: 0 }}>{fine.book_title}</p>
+                        <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: 0 }}>Pinjam: {formatDate(fine.loan_date)}</p>
+                      </td>
+                      <td>
+                        <span style={{
+                          padding: '4px 10px',
+                          borderRadius: '8px',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          backgroundColor: fine.fine_type.includes('Late') ? '#fff7ed' : '#fef2f2',
+                          color: fine.fine_type.includes('Late') ? '#f97316' : '#ef4444'
+                        }}>
+                          {fine.fine_type}
+                        </span>
+                      </td>
+                      <td>
+                        <p style={{ fontSize: '0.938rem', fontWeight: 800, color: '#1e293b', margin: 0 }}>Rp {fine.amount.toLocaleString('id-ID')}</p>
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '4px 12px',
+                          borderRadius: '9999px',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          backgroundColor: fine.status === 'Paid' ? '#dcfce7' : '#fee2e2',
+                          color: fine.status === 'Paid' ? '#16a34a' : '#ef4444'
+                        }}>
+                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: fine.status === 'Paid' ? '#16a34a' : '#ef4444' }}></span>
+                          {fine.status === 'Paid' ? 'Lunas' : 'Belum Lunas'}
+                        </span>
+                      </td>
+                      <td style={{ paddingRight: '24px', textAlign: 'right' }}>
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                          <button onClick={() => handleOpenDetail(fine)} className="action-btn-circle" title="Detail">
+                            <span className="material-symbols-outlined" style={{ fontSize: '1.125rem' }}>visibility</span>
+                          </button>
+                          {fine.status === 'Unpaid' && (
+                            <button onClick={() => handlePay(fine)} className="action-btn-circle" title="Bayar" style={{ color: 'var(--primary)' }}>
+                              <span className="material-symbols-outlined" style={{ fontSize: '1.125rem' }}>payments</span>
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )) : (
+                    <tr>
+                      <td colSpan={6} style={{ padding: '64px', textAlign: 'center', color: '#94a3b8' }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: '48px', marginBottom: '16px', opacity: 0.3 }}>payments</span>
+                        <p style={{ fontSize: '1rem', fontWeight: 500 }}>Tidak ada data denda ditemukan</p>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Settings Modal */}
+      {showSettingsModal && (
+        <div className="modal-overlay" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            style={{ backgroundColor: 'white', width: '100%', maxWidth: '480px', borderRadius: '24px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', overflow: 'hidden' }}
+          >
+            <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '24px 32px', borderBottom: '1px solid #f1f5f9' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ backgroundColor: 'rgba(19, 91, 236, 0.1)', color: 'var(--primary)', padding: '10px', borderRadius: '12px' }}>
+                  <span className="material-symbols-outlined">settings</span>
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>Konfigurasi Denda</h3>
+                  <p style={{ fontSize: '0.813rem', color: '#64748b', margin: 0 }}>Atur tarif denda otomatis</p>
+                </div>
+              </div>
+              <button onClick={() => setShowSettingsModal(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}>
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </header>
+
+            <div style={{ padding: '32px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label style={{ fontSize: '0.813rem', fontWeight: 700, color: '#475569' }}>Terlambat per Hari</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '0.875rem', fontWeight: 700 }}>Rp</span>
+                  <input
+                    type="number"
+                    value={fineSettings.fine_late_per_day}
+                    onChange={(e) => setFineSettings({ ...fineSettings, fine_late_per_day: e.target.value })}
+                    style={{ width: '100%', padding: '12px 16px 12px 44px', border: '1px solid var(--border-main)', borderRadius: '12px', fontSize: '1rem', fontWeight: 700, backgroundColor: '#f8fafc' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{ fontSize: '0.813rem', fontWeight: 700, color: '#475569' }}>Rusak Ringan</label>
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '0.813rem', fontWeight: 700 }}>Rp</span>
+                    <input
+                      type="number"
+                      value={fineSettings.fine_damage_light}
+                      onChange={(e) => setFineSettings({ ...fineSettings, fine_damage_light: e.target.value })}
+                      style={{ width: '100%', padding: '10px 12px 10px 36px', border: '1px solid var(--border-main)', borderRadius: '10px', fontSize: '0.875rem', fontWeight: 700, backgroundColor: '#f8fafc' }}
+                    />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{ fontSize: '0.813rem', fontWeight: 700, color: '#475569' }}>Rusak Sedang</label>
+                  <div style={{ position: 'relative' }}>
+                    <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '0.813rem', fontWeight: 700 }}>Rp</span>
+                    <input
+                      type="number"
+                      value={fineSettings.fine_damage_medium}
+                      onChange={(e) => setFineSettings({ ...fineSettings, fine_damage_medium: e.target.value })}
+                      style={{ width: '100%', padding: '10px 12px 10px 36px', border: '1px solid var(--border-main)', borderRadius: '10px', fontSize: '0.875rem', fontWeight: 700, backgroundColor: '#f8fafc' }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label style={{ fontSize: '0.813rem', fontWeight: 700, color: '#475569' }}>Rusak Berat / Hilang</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '0.875rem', fontWeight: 700 }}>Rp</span>
+                  <input
+                    type="number"
+                    value={fineSettings.fine_damage_heavy}
+                    onChange={(e) => setFineSettings({ ...fineSettings, fine_damage_heavy: e.target.value })}
+                    style={{ width: '100%', padding: '12px 16px 12px 44px', border: '1px solid var(--border-main)', borderRadius: '12px', fontSize: '1rem', fontWeight: 700, backgroundColor: '#f8fafc' }}
+                  />
+                </div>
+              </div>
+
+              <button
+                onClick={async () => { await handleSaveSettings(); setShowSettingsModal(false); }}
+                className="btn-primary"
+                style={{ height: '52px', justifyContent: 'center', borderRadius: '14px', marginTop: '8px' }}
+              >
+                <span className="material-symbols-outlined">save</span>
+                Simpan Perubahan
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Detail Modal */}
+      {showDetailModal && selectedFine && (
+        <div className="modal-overlay" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            style={{
+              backgroundColor: 'white',
+              width: '100%',
+              maxWidth: '800px',
+              borderRadius: '24px',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              maxHeight: '90vh'
+            }}
+          >
+            {/* Header Section */}
+            <header style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              borderBottom: '1px solid #f1f5f9',
+              padding: '20px 32px',
+              backgroundColor: 'white',
+              position: 'sticky',
+              top: 0,
+              zIndex: 10
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div style={{ backgroundColor: 'rgba(19, 127, 236, 0.1)', padding: '10px', borderRadius: '12px' }}>
+                  <span className="material-symbols-outlined" style={{ color: 'var(--primary)' }}>payments</span>
+                </div>
+                <div>
+                  <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>Detail Pembayaran Denda</h2>
+                  <p style={{ fontSize: '0.875rem', color: '#64748b', margin: 0 }}>Kelola pelunasan denda keterlambatan buku</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowDetailModal(false)}
+                style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </header>
+
+            {/* Modal Body (Scrollable) */}
+            <div className="custom-scrollbar" style={{ overflowY: 'auto', padding: '32px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
+              {/* Member Profile */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '20px',
+                padding: '24px',
+                backgroundColor: 'rgba(19, 127, 236, 0.05)',
+                borderRadius: '20px',
+                border: '1px solid rgba(19, 127, 236, 0.1)'
+              }}>
+                <div style={{
+                  width: '64px',
+                  height: '64px',
+                  borderRadius: '50%',
+                  backgroundColor: 'white',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: '2px solid white',
+                  boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                  fontSize: '24px',
+                  fontWeight: 900,
+                  color: 'var(--primary)'
+                }}>
+                  {selectedFine.member_name.charAt(0)}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <h3 style={{ fontSize: '1.5rem', fontWeight: 900, color: '#0f172a', margin: 0 }}>{selectedFine.member_name}</h3>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', marginTop: '4px' }}>
+                    <span style={{ fontSize: '0.875rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>badge</span> ID: {selectedFine.member_code}
+                    </span>
+                    <span style={{ fontSize: '0.875rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>school</span> Kelas {selectedFine.member_kelas || '-'}
+                    </span>
+                  </div>
+                </div>
+                <div style={{ display: 'none', sm: 'block' } as any}>
+                  {memberFines.some(f => f.status === 'Unpaid') ? (
+                    <span style={{ backgroundColor: '#fef3c7', color: '#b45309', fontSize: '0.75rem', fontWeight: 800, padding: '6px 16px', borderRadius: '9999px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tunggakan Aktif</span>
+                  ) : (
+                    <span style={{ backgroundColor: '#dcfce7', color: '#16a34a', fontSize: '0.75rem', fontWeight: 800, padding: '6px 16px', borderRadius: '9999px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>LUNAS</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Violation History Table */}
+              <section>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <h4 style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '10px', margin: 0 }}>
+                    <span className="material-symbols-outlined" style={{ color: 'var(--primary)', fontSize: '20px' }}>history</span>
+                    Riwayat Pelanggaran
+                  </h4>
+                  <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    {memberFines.filter(f => f.status === 'Unpaid').length} Item Belum Lunas
+                  </span>
+                </div>
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '16px', overflow: 'hidden' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#f8fafc' }}>
+                        <th style={{ padding: '12px 20px', fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Tanggal</th>
+                        <th style={{ padding: '12px 20px', fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Keterangan Pelanggaran</th>
+                        <th style={{ padding: '12px 20px', fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', textAlign: 'right' }}>Denda</th>
+                      </tr>
+                    </thead>
+                    <tbody style={{ divideY: '1px solid #f1f5f9' } as any}>
+                      {memberFines.map((item, idx) => (
+                        <tr key={idx} style={{ borderTop: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '16px 20px', fontSize: '0.875rem', color: '#64748b' }}>{formatDate(item.loan_date)}</td>
+                          <td style={{ padding: '16px 20px' }}>
+                            <p style={{ fontSize: '0.875rem', fontWeight: 700, color: '#1e293b', margin: 0 }}>{item.fine_type}</p>
+                            <p style={{ fontSize: '0.75rem', color: '#64748b', margin: 0 }}>Buku: {item.book_title}</p>
+                          </td>
+                          <td style={{ padding: '16px 20px', textAlign: 'right' }}>
+                            <span style={{
+                              fontSize: '0.875rem',
+                              fontWeight: 800,
+                              color: item.status === 'Unpaid' ? '#1e293b' : '#cbd5e1',
+                              textDecoration: item.status === 'Unpaid' ? 'none' : 'line-through'
+                            }}>
+                              Rp {item.amount.toLocaleString('id-ID')}
+                            </span>
+                            {item.status === 'Paid' && <span style={{ marginLeft: '8px', fontSize: '10px', color: '#16a34a', fontWeight: 900 }}>LUNAS</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              {/* Summary & Payment Form */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '32px' }}>
+                <div style={{ backgroundColor: 'var(--primary)', padding: '32px', borderRadius: '24px', color: 'white', display: 'flex', flexDirection: 'column', justifyContent: 'center', boxShadow: '0 20px 25px -5px rgba(19, 91, 236, 0.2)' }}>
+                  <p style={{ fontSize: '0.75rem', fontWeight: 800, opacity: 0.8, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '8px' }}>Total Akumulasi Denda</p>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                    <span style={{ fontSize: '1.25rem', fontWeight: 500, opacity: 0.9 }}>Rp</span>
+                    <h2 style={{ fontSize: '3rem', fontWeight: 900, margin: 0, letterSpacing: '-0.02em' }}>
+                      {memberFines.filter(f => f.status === 'Unpaid').reduce((sum, f) => sum + f.amount, 0).toLocaleString('id-ID')}
+                    </h2>
+                  </div>
+                  <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
+                    <p style={{ fontSize: '0.75rem', fontStyle: 'italic', opacity: 0.8, margin: 0 }}>*Denda dihitung berdasarkan sistem otomatis perpustakaan.</p>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 700, color: '#475569', marginBottom: '8px' }}>Metode Pembayaran</label>
+                    <select
+                      value={paymentMethod}
+                      onChange={(e) => setPaymentMethod(e.target.value)}
+                      style={{ width: '100%', padding: '12px 16px', borderRadius: '12px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', fontSize: '1rem', fontWeight: 600, color: '#1e293b' }}
+                    >
+                      <option value="cash">Tunai (Cash)</option>
+                      <option value="qris">QRIS / E-Wallet</option>
+                      <option value="transfer">Transfer Bank</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 700, color: '#475569', marginBottom: '8px' }}>Jumlah Bayar (Rp)</label>
+                    <div style={{ position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontWeight: 700 }}>Rp</span>
+                      <input
+                        type="number"
+                        style={{ width: '100%', padding: '12px 16px 12px 48px', borderRadius: '12px', border: '2px solid #e2e8f0', fontSize: '1.25rem', fontWeight: 900, color: 'var(--primary)' }}
+                        value={amountPaid}
+                        onChange={(e) => setAmountPaid(Number(e.target.value))}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer Actions */}
+            <footer style={{
+              padding: '24px 32px',
+              borderTop: '1px solid #f1f5f9',
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              backgroundColor: '#f8fafc'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>verified_user</span>
+                <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>Transaksi aman & tercatat otomatis</span>
+              </div>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button
+                  onClick={() => setShowDetailModal(false)}
+                  className="btn-white"
+                  style={{ padding: '10px 24px', borderRadius: '12px', fontSize: '0.875rem' }}
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={handleProcessLunas}
+                  disabled={memberFines.filter(f => f.status === 'Unpaid').length === 0}
+                  className="btn-primary"
+                  style={{ padding: '10px 32px', borderRadius: '12px', fontSize: '0.875rem', boxShadow: '0 8px 16px -4px rgba(19, 91, 236, 0.3)' }}
+                >
+                  Proses & Tandai Lunas
+                  <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>check_circle</span>
+                </button>
+              </div>
+            </footer>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }
@@ -868,13 +1569,40 @@ function DashboardView({ setView }: { setView: (v: string) => void }) {
   const categoryColors = ['#137fec', '#f59e0b', '#10b981', '#6366f1', '#94a3b8'];
 
   const handleExportPDF = async () => {
-    await showAlert("Export PDF akan segera tersedia", "info");
+    // For now we use window.print() which can "Save as PDF"
+    window.print();
   };
 
   const handleExportExcel = async () => {
     try {
-      // For dashboard, just show a message to use specific view exports
-      await showAlert("Silakan gunakan fitur ekspor di menu Buku atau Data Anggota untuk mendapatkan data spesifik.", "info");
+      const summaryData = [
+        ["Laporan Ringkasan Dashboard Perpustakaan"],
+        ["Tanggal Cetak", new Date().toLocaleString('id-ID')],
+        [],
+        ["Statistik Utama"],
+        ["Total Koleksi Buku", stats.total_books],
+        ["Pendaftar Bulan Ini", stats.monthly_new_members],
+        ["Peminjaman Aktif", stats.active_loans],
+        ["Buku Terlambat", stats.overdue_loans],
+        [],
+        ["Kategori Terpopuler"],
+        ["Kategori", "Jumlah Peminjaman"],
+        ...categories.map(c => [c.category || "Uncategorized", c.count]),
+        [],
+        ["Buku Terpopuler"],
+        ["Judul", "Penulis", "Kategori", "Total Dipinjam"],
+        ...topBooks.map(b => [b.title, b.author, b.category, b.loan_count])
+      ];
+
+      const ws = XLSX.utils.aoa_to_sheet(summaryData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Dashboard Summary");
+
+      const excelBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+      const data = new Blob([excelBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8" });
+      saveAs(data, `Dashboard_Summary_${new Date().toISOString().split('T')[0]}.xlsx`);
+
+      await showAlert("Ringkasan dashboard berhasil diekspor ke Excel", "success");
     } catch (err) {
       await showAlert("Gagal ekspor Excel: " + err, "error");
     }
@@ -1821,7 +2549,7 @@ function BooksView({ books, onRefresh }: { books: Book[], onRefresh: () => void 
       {modalType === "barcode" && selectedBook && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: '600px', backgroundColor: '#ffffff', borderRadius: '32px' }}>
-            <div className="modal-header" style={{ padding: '32px 32px 16px' }}>
+            <div className="modal-header" style={{ padding: '32px 32px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                 <div style={{ backgroundColor: '#10b98120', padding: '10px', borderRadius: '14px' }}>
                   <span className="material-symbols-outlined" style={{ color: '#10b981', fontSize: '1.5rem' }}>barcode_scanner</span>
@@ -2811,24 +3539,26 @@ function MembersView({ members, onRefresh }: { members: Member[], onRefresh: () 
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                       <button
                         onClick={() => { setFormData(selectedMember); setModalType("edit"); }}
                         style={{
-                          padding: '8px 16px',
-                          backgroundColor: '#f1f5f9',
-                          color: '#334155',
+                          padding: '10px 20px',
+                          backgroundColor: 'var(--primary)',
+                          color: 'white',
                           fontWeight: 700,
                           fontSize: '14px',
-                          borderRadius: '8px',
-                          border: '1px solid #e2e8f0',
+                          borderRadius: '10px',
+                          border: 'none',
                           cursor: 'pointer',
-                          transition: 'background-color 0.2s'
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          boxShadow: '0 4px 6px -1px rgba(19, 127, 236, 0.2)'
                         }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e2e8f0'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
                       >
-                        Edit Profile
+                        <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>edit</span>
+                        Edit Member
                       </button>
                     </div>
                   </div>
@@ -2886,7 +3616,7 @@ function MembersView({ members, onRefresh }: { members: Member[], onRefresh: () 
                   </div>
 
                   {/* Right Column: Borrowed Books */}
-                  <div style={{ gridColumn: 'span 1' }}> {/* In a larger grid this would be span 2 if we had 3 columns, but here we have auto-fit */}
+                  <div style={{ gridColumn: 'span 1' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                       <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
                         <span className="material-symbols-outlined" style={{ color: 'var(--primary)' }}>auto_stories</span>
@@ -2901,7 +3631,6 @@ function MembersView({ members, onRefresh }: { members: Member[], onRefresh: () 
                       {memberLoans.length > 0 ? memberLoans.map((loan, idx) => (
                         <div key={idx} style={{ display: 'flex', gap: '12px', padding: '12px', borderRadius: '8px', backgroundColor: '#f8fafc', border: '1px solid #f1f5f9' }}>
                           <div style={{ width: '48px', height: '72px', flexShrink: 0, backgroundColor: '#cbd5e1', borderRadius: '4px', overflow: 'hidden' }}>
-                            {/* Placeholder for book cover */}
                             {loan.book_cover ? (
                               <img src={loan.book_cover} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                             ) : (
@@ -2964,234 +3693,236 @@ function MembersView({ members, onRefresh }: { members: Member[], onRefresh: () 
       )}
 
       {/* Borrowing History Modal */}
-      {showBorrowingHistory && selectedMember && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(15, 23, 42, 0.4)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1100,
-            padding: '16px'
-          }}
-          onClick={(e) => { if (e.target === e.currentTarget) setShowBorrowingHistory(false); }}
-        >
-          <div style={{
-            backgroundColor: 'white',
-            width: '100%',
-            maxWidth: '960px',
-            maxHeight: '90vh',
-            display: 'flex',
-            flexDirection: 'column',
-            borderRadius: '12px',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-            overflow: 'hidden',
-            border: '1px solid #e2e8f0'
-          }}>
-            {/* Modal Header */}
-            <div style={{
-              padding: '24px',
-              borderBottom: '1px solid #f1f5f9',
+      {
+        showBorrowingHistory && selectedMember && (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(15, 23, 42, 0.4)',
+              backdropFilter: 'blur(4px)',
               display: 'flex',
-              flexWrap: 'wrap',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
-              gap: '16px'
-            }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <h2 style={{ color: '#0f172a', fontSize: '24px', fontWeight: 700, letterSpacing: '-0.025em', margin: 0 }}>
-                  Riwayat Peminjaman <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: '18px' }}>(1 Tahun Terakhir)</span>
-                </h2>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '14px' }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>person</span>
-                  <p style={{ margin: 0 }}>Anggota: <span style={{ fontWeight: 500, color: 'var(--primary)' }}>{selectedMember.name}</span></p>
-                  <span style={{ margin: '0 4px', color: '#cbd5e1' }}>•</span>
-                  <p style={{ margin: 0 }}>ID: {selectedMember.member_code}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowBorrowingHistory(false)}
-                style={{
-                  padding: '8px',
-                  borderRadius: '9999px',
-                  border: 'none',
-                  background: 'transparent',
-                  cursor: 'pointer',
-                  color: '#94a3b8',
-                  transition: 'background-color 0.2s'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-              >
-                <span className="material-symbols-outlined">close</span>
-              </button>
-            </div>
-
-            {/* Table Content - Scrollable */}
-            <div style={{ flex: 1, overflowY: 'auto' }}>
-              {loadingHistory ? (
-                <div style={{ padding: '48px', textAlign: 'center', color: '#94a3b8' }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: '48px', opacity: 0.3, animation: 'spin 1s linear infinite' }}>progress_activity</span>
-                  <p style={{ marginTop: '12px', fontWeight: 600 }}>Memuat data...</p>
-                </div>
-              ) : borrowingHistory.length === 0 ? (
-                <div style={{ padding: '48px', textAlign: 'center', color: '#94a3b8' }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: '48px', opacity: 0.3 }}>menu_book</span>
-                  <p style={{ marginTop: '12px', fontWeight: 600 }}>Tidak ada riwayat peminjaman</p>
-                </div>
-              ) : (
-                <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
-                  <thead style={{ position: 'sticky', top: 0, backgroundColor: '#f8fafc', zIndex: 10 }}>
-                    <tr>
-                      <th style={{ padding: '16px 24px', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', borderBottom: '1px solid #f1f5f9' }}>Judul Buku</th>
-                      <th style={{ padding: '16px 24px', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', borderBottom: '1px solid #f1f5f9' }}>Tanggal Pinjam</th>
-                      <th style={{ padding: '16px 24px', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', borderBottom: '1px solid #f1f5f9' }}>Tanggal Kembali</th>
-                      <th style={{ padding: '16px 24px', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', borderBottom: '1px solid #f1f5f9' }}>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {borrowingHistory.map((item: any, idx: number) => {
-                      const isReturned = item.status === 'returned';
-                      const isOverdue = item.status === 'borrowed' && new Date(item.due_date) < new Date();
-
-                      let statusLabel = 'Dipinjam';
-                      let statusBg = '#dbeafe';
-                      let statusColor = '#1d4ed8';
-                      let dotColor = '#3b82f6';
-
-                      if (isReturned) {
-                        statusLabel = 'Dikembalikan';
-                        statusBg = '#d1fae5';
-                        statusColor = '#047857';
-                        dotColor = '#10b981';
-                      } else if (isOverdue) {
-                        statusLabel = 'Terlambat';
-                        statusBg = '#ffe4e6';
-                        statusColor = '#b91c1c';
-                        dotColor = '#ef4444';
-                      }
-
-                      const formatDate = (dateStr: string) => {
-                        if (!dateStr) return '-';
-                        return new Date(dateStr).toLocaleDateString('sv-SE');
-                      };
-
-                      return (
-                        <tr
-                          key={idx}
-                          style={{ transition: 'background-color 0.15s', borderBottom: '1px solid #f1f5f9' }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(248, 250, 252, 0.5)'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                        >
-                          <td style={{ padding: '16px 24px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                              <div style={{
-                                width: '32px',
-                                height: '48px',
-                                backgroundColor: '#f1f5f9',
-                                borderRadius: '4px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                overflow: 'hidden',
-                                flexShrink: 0
-                              }}>
-                                {item.book_cover ? (
-                                  <img src={item.book_cover} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                ) : (
-                                  <span className="material-symbols-outlined" style={{ color: '#94a3b8', fontSize: '18px' }}>book</span>
-                                )}
-                              </div>
-                              <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '14px' }}>{item.book_title}</span>
-                            </div>
-                          </td>
-                          <td style={{ padding: '16px 24px', color: '#475569', fontSize: '14px' }}>
-                            {formatDate(item.loan_date)}
-                          </td>
-                          <td style={{
-                            padding: '16px 24px',
-                            fontSize: '14px',
-                            color: isReturned ? '#475569' : '#ef4444',
-                            fontWeight: isReturned ? 400 : 500
-                          }}>
-                            {isReturned ? formatDate(item.return_date) : 'Belum dikembalikan'}
-                          </td>
-                          <td style={{ padding: '16px 24px' }}>
-                            <span style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              padding: '4px 10px',
-                              borderRadius: '6px',
-                              fontSize: '12px',
-                              fontWeight: 500,
-                              backgroundColor: statusBg,
-                              color: statusColor
-                            }}>
-                              <span style={{
-                                width: '6px',
-                                height: '6px',
-                                borderRadius: '9999px',
-                                backgroundColor: dotColor,
-                                marginRight: '6px'
-                              }}></span>
-                              {statusLabel}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-
-            {/* Modal Footer */}
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1100,
+              padding: '16px'
+            }}
+            onClick={(e) => { if (e.target === e.currentTarget) setShowBorrowingHistory(false); }}
+          >
             <div style={{
-              padding: '24px',
-              backgroundColor: '#f8fafc',
-              borderTop: '1px solid #f1f5f9',
+              backgroundColor: 'white',
+              width: '100%',
+              maxWidth: '960px',
+              maxHeight: '90vh',
               display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
+              flexDirection: 'column',
+              borderRadius: '12px',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+              overflow: 'hidden',
+              border: '1px solid #e2e8f0'
             }}>
-              <div style={{ fontSize: '14px', color: '#64748b' }}>
-                Menampilkan <span style={{ fontWeight: 500 }}>{borrowingHistory.length}</span> data peminjaman
-              </div>
-              <div style={{ display: 'flex', gap: '12px' }}>
+              {/* Modal Header */}
+              <div style={{
+                padding: '24px',
+                borderBottom: '1px solid #f1f5f9',
+                display: 'flex',
+                flexWrap: 'wrap',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                gap: '16px'
+              }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <h2 style={{ color: '#0f172a', fontSize: '24px', fontWeight: 700, letterSpacing: '-0.025em', margin: 0 }}>
+                    Riwayat Peminjaman <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: '18px' }}>(1 Tahun Terakhir)</span>
+                  </h2>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '14px' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>person</span>
+                    <p style={{ margin: 0 }}>Anggota: <span style={{ fontWeight: 500, color: 'var(--primary)' }}>{selectedMember.name}</span></p>
+                    <span style={{ margin: '0 4px', color: '#cbd5e1' }}>•</span>
+                    <p style={{ margin: 0 }}>ID: {selectedMember.member_code}</p>
+                  </div>
+                </div>
                 <button
                   onClick={() => setShowBorrowingHistory(false)}
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px',
-                    padding: '0 24px',
-                    height: '44px',
-                    backgroundColor: 'var(--primary)',
-                    color: 'white',
-                    fontSize: '14px',
-                    fontWeight: 600,
-                    borderRadius: '8px',
+                    padding: '8px',
+                    borderRadius: '9999px',
                     border: 'none',
+                    background: 'transparent',
                     cursor: 'pointer',
-                    boxShadow: '0 1px 3px 0 rgba(19, 127, 236, 0.2)',
-                    transition: 'all 0.15s'
+                    color: '#94a3b8',
+                    transition: 'background-color 0.2s'
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
-                  onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                 >
-                  <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>arrow_back</span>
-                  Kembali ke Profil
+                  <span className="material-symbols-outlined">close</span>
                 </button>
+              </div>
+
+              {/* Table Content - Scrollable */}
+              <div style={{ flex: 1, overflowY: 'auto' }}>
+                {loadingHistory ? (
+                  <div style={{ padding: '48px', textAlign: 'center', color: '#94a3b8' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: '48px', opacity: 0.3, animation: 'spin 1s linear infinite' }}>progress_activity</span>
+                    <p style={{ marginTop: '12px', fontWeight: 600 }}>Memuat data...</p>
+                  </div>
+                ) : borrowingHistory.length === 0 ? (
+                  <div style={{ padding: '48px', textAlign: 'center', color: '#94a3b8' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: '48px', opacity: 0.3 }}>menu_book</span>
+                    <p style={{ marginTop: '12px', fontWeight: 600 }}>Tidak ada riwayat peminjaman</p>
+                  </div>
+                ) : (
+                  <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
+                    <thead style={{ position: 'sticky', top: 0, backgroundColor: '#f8fafc', zIndex: 10 }}>
+                      <tr>
+                        <th style={{ padding: '16px 24px', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', borderBottom: '1px solid #f1f5f9' }}>Judul Buku</th>
+                        <th style={{ padding: '16px 24px', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', borderBottom: '1px solid #f1f5f9' }}>Tanggal Pinjam</th>
+                        <th style={{ padding: '16px 24px', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', borderBottom: '1px solid #f1f5f9' }}>Tanggal Kembali</th>
+                        <th style={{ padding: '16px 24px', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', borderBottom: '1px solid #f1f5f9' }}>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {borrowingHistory.map((item: any, idx: number) => {
+                        const isReturned = item.status === 'returned';
+                        const isOverdue = item.status === 'borrowed' && new Date(item.due_date) < new Date();
+
+                        let statusLabel = 'Dipinjam';
+                        let statusBg = '#dbeafe';
+                        let statusColor = '#1d4ed8';
+                        let dotColor = '#3b82f6';
+
+                        if (isReturned) {
+                          statusLabel = 'Dikembalikan';
+                          statusBg = '#d1fae5';
+                          statusColor = '#047857';
+                          dotColor = '#10b981';
+                        } else if (isOverdue) {
+                          statusLabel = 'Terlambat';
+                          statusBg = '#ffe4e6';
+                          statusColor = '#b91c1c';
+                          dotColor = '#ef4444';
+                        }
+
+                        const formatDate = (dateStr: string) => {
+                          if (!dateStr) return '-';
+                          return new Date(dateStr).toLocaleDateString('sv-SE');
+                        };
+
+                        return (
+                          <tr
+                            key={idx}
+                            style={{ transition: 'background-color 0.15s', borderBottom: '1px solid #f1f5f9' }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(248, 250, 252, 0.5)'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                          >
+                            <td style={{ padding: '16px 24px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <div style={{
+                                  width: '32px',
+                                  height: '48px',
+                                  backgroundColor: '#f1f5f9',
+                                  borderRadius: '4px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  overflow: 'hidden',
+                                  flexShrink: 0
+                                }}>
+                                  {item.book_cover ? (
+                                    <img src={item.book_cover} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  ) : (
+                                    <span className="material-symbols-outlined" style={{ color: '#94a3b8', fontSize: '18px' }}>book</span>
+                                  )}
+                                </div>
+                                <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '14px' }}>{item.book_title}</span>
+                              </div>
+                            </td>
+                            <td style={{ padding: '16px 24px', color: '#475569', fontSize: '14px' }}>
+                              {formatDate(item.loan_date)}
+                            </td>
+                            <td style={{
+                              padding: '16px 24px',
+                              fontSize: '14px',
+                              color: isReturned ? '#475569' : '#ef4444',
+                              fontWeight: isReturned ? 400 : 500
+                            }}>
+                              {isReturned ? formatDate(item.return_date) : 'Belum dikembalikan'}
+                            </td>
+                            <td style={{ padding: '16px 24px' }}>
+                              <span style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                padding: '4px 10px',
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                fontWeight: 500,
+                                backgroundColor: statusBg,
+                                color: statusColor
+                              }}>
+                                <span style={{
+                                  width: '6px',
+                                  height: '6px',
+                                  borderRadius: '9999px',
+                                  backgroundColor: dotColor,
+                                  marginRight: '6px'
+                                }}></span>
+                                {statusLabel}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div style={{
+                padding: '24px',
+                backgroundColor: '#f8fafc',
+                borderTop: '1px solid #f1f5f9',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div style={{ fontSize: '14px', color: '#64748b' }}>
+                  Menampilkan <span style={{ fontWeight: 500 }}>{borrowingHistory.length}</span> data peminjaman
+                </div>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button
+                    onClick={() => setShowBorrowingHistory(false)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      padding: '0 24px',
+                      height: '44px',
+                      backgroundColor: 'var(--primary)',
+                      color: 'white',
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      borderRadius: '8px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      boxShadow: '0 1px 3px 0 rgba(19, 127, 236, 0.2)',
+                      transition: 'all 0.15s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
+                    onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>arrow_back</span>
+                    Kembali ke Profil
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   );
 }
 
@@ -3203,7 +3934,23 @@ function LoansView({ onRefresh }: { onRefresh: () => void }) {
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [memberLoanCount, setMemberLoanCount] = useState(0);
   const [cart, setCart] = useState<Array<{ book: Book, dueDate: string }>>([]);
-  const [loanDays] = useState(7);
+  const [loanDays, setLoanDays] = useState(7);
+  const [maxBooks, setMaxBooks] = useState(5);
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const s = await safeInvoke('get_settings');
+        if (s) {
+          if (s.loan_duration) setLoanDays(parseInt(s.loan_duration));
+          if (s.max_books) setMaxBooks(parseInt(s.max_books));
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    loadSettings();
+  }, []);
   const { showAlert, showConfirm } = useAlert();
 
   const handleUpdateDueDate = (index: number, newDateString: string) => {
@@ -3377,7 +4124,7 @@ function LoansView({ onRefresh }: { onRefresh: () => void }) {
                     <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Kelas: {selectedMember.kelas || '-'}</span>
                   </p>
                   <p style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                    Sedang meminjam: <span style={{ fontWeight: 700, color: memberLoanCount >= 3 ? '#ef4444' : '#1e293b' }}>{memberLoanCount}</span> / 5 Buku
+                    Sedang meminjam: <span style={{ fontWeight: 700, color: memberLoanCount >= maxBooks ? '#ef4444' : '#1e293b' }}>{memberLoanCount}</span> / {maxBooks} Buku
                   </p>
                 </div>
               </div>
@@ -3542,6 +4289,8 @@ function LoansView({ onRefresh }: { onRefresh: () => void }) {
 function SettingsView({ user, onProfileUpdate }: { user: User, onProfileUpdate: (u: User) => void }) {
   const { showAlert, showConfirm } = useAlert();
   const [profileName, setProfileName] = useState(user.name);
+  const [profileAvatar, setProfileAvatar] = useState(user.avatar);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -3550,7 +4299,10 @@ function SettingsView({ user, onProfileUpdate }: { user: User, onProfileUpdate: 
   const [settings, setSettings] = useState<{ [key: string]: string }>({
     language: 'id',
     theme: 'light',
-    barcode_path: ''
+    barcode_path: '',
+    max_books: '5',
+    loan_duration: '7',
+    fine_late_per_day: '1000'
   });
 
   useEffect(() => {
@@ -3580,11 +4332,22 @@ function SettingsView({ user, onProfileUpdate }: { user: User, onProfileUpdate: 
 
   const handleSaveProfile = async () => {
     try {
-      const updatedUser = await safeInvoke('update_profile', { userId: user.id, name: profileName });
+      const updatedUser = await safeInvoke('update_profile', { userId: user.id, name: profileName, avatar: profileAvatar });
       onProfileUpdate(updatedUser);
       await showAlert('Profil berhasil diperbarui!', 'success');
     } catch (err) {
       await showAlert('Gagal menyimpan profil: ' + err, 'error');
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProfileAvatar(reader.result as string);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -3700,28 +4463,44 @@ function SettingsView({ user, onProfileUpdate }: { user: User, onProfileUpdate: 
                   fontWeight: 700,
                   color: '#64748b',
                   border: '4px solid #f8fafc',
-                  boxShadow: '0 1px 3px 0 rgba(0,0,0,0.1)'
+                  boxShadow: '0 1px 3px 0 rgba(0,0,0,0.1)',
+                  overflow: 'hidden'
                 }}>
-                  {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                  {profileAvatar ? (
+                    <img src={profileAvatar} alt={user.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
+                  )}
                 </div>
-                <button style={{
-                  position: 'absolute',
-                  bottom: 0,
-                  right: 0,
-                  backgroundColor: 'var(--primary)',
-                  color: 'white',
-                  padding: '6px',
-                  borderRadius: '9999px',
-                  border: '2px solid white',
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  style={{ display: 'none' }}
+                  accept="image/*"
+                  onChange={handleFileChange}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    right: 0,
+                    backgroundColor: 'var(--primary)',
+                    color: 'white',
+                    padding: '6px',
+                    borderRadius: '9999px',
+                    border: '2px solid white',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
                   <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>edit</span>
                 </button>
               </div>
+
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <h4 style={{ fontWeight: 700, fontSize: '18px', margin: 0, color: '#0f172a' }}>{user.name}</h4>
                 <p style={{ fontSize: '14px', color: '#64748b', margin: 0 }}>{user.role === 'admin' ? 'Administrator Utama Perpustakaan' : 'Staf Perpustakaan'}</p>
@@ -3776,10 +4555,10 @@ function SettingsView({ user, onProfileUpdate }: { user: User, onProfileUpdate: 
               </div>
             </div>
           </div>
-        </section>
+        </section >
 
         {/* === 2. Preferensi Sistem === */}
-        <section style={sectionStyle}>
+        < section style={sectionStyle} >
           <div style={sectionHeaderStyle}>
             <span className="material-symbols-outlined" style={{ color: 'var(--primary)' }}>display_settings</span>
             <h3 style={{ fontWeight: 700, fontSize: '18px', margin: 0 }}>Preferensi Sistem</h3>
@@ -3909,10 +4688,72 @@ function SettingsView({ user, onProfileUpdate }: { user: User, onProfileUpdate: 
               </div>
             </div>
           </div>
+        </section >
+
+        {/* === 3. Kebijakan Peminjaman === */}
+        <section style={sectionStyle}>
+          <div style={sectionHeaderStyle}>
+            <span className="material-symbols-outlined" style={{ color: 'var(--primary)' }}>policy</span>
+            <h3 style={{ fontWeight: 700, fontSize: '18px', margin: 0 }}>Kebijakan Peminjaman</h3>
+          </div>
+          <div style={{ padding: '0 24px' }}>
+
+            {/* Maksimal Buku */}
+            <div style={{ padding: '20px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9' }}>
+              <div>
+                <p style={{ fontWeight: 600, fontSize: '14px', margin: 0, color: '#0f172a' }}>Maksimal Buku per Anggota</p>
+                <p style={{ fontSize: '12px', color: '#64748b', margin: '4px 0 0' }}>Batas jumlah buku yang boleh dipinjam secara bersamaan.</p>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input
+                  type="number"
+                  value={settings.max_books || '5'}
+                  onChange={(e) => handleUpdateSetting('max_books', e.target.value)}
+                  style={{
+                    width: '100px',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0',
+                    fontSize: '14px',
+                    textAlign: 'center',
+                    backgroundColor: 'var(--bg-main)',
+                    color: 'var(--text-main)'
+                  }}
+                />
+                <span style={{ fontSize: '14px', color: '#64748b', fontWeight: 600 }}>Buku</span>
+              </div>
+            </div>
+
+            {/* Durasi Pinjam */}
+            <div style={{ padding: '20px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <p style={{ fontWeight: 600, fontSize: '14px', margin: 0, color: '#0f172a' }}>Durasi Peminjaman Standar</p>
+                <p style={{ fontSize: '12px', color: '#64748b', margin: '4px 0 0' }}>Batas waktu pengembalian buku (Hari).</p>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input
+                  type="number"
+                  value={settings.loan_duration || '7'}
+                  onChange={(e) => handleUpdateSetting('loan_duration', e.target.value)}
+                  style={{
+                    width: '100px',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0',
+                    fontSize: '14px',
+                    textAlign: 'center',
+                    backgroundColor: 'var(--bg-main)',
+                    color: 'var(--text-main)'
+                  }}
+                />
+                <span style={{ fontSize: '14px', color: '#64748b', fontWeight: 600 }}>Hari</span>
+              </div>
+            </div>
+          </div>
         </section>
 
-        {/* === 3. Manajemen Database === */}
-        <section style={sectionStyle}>
+        {/* === 4. Manajemen Database === */}
+        < section style={sectionStyle} >
           <div style={sectionHeaderStyle}>
             <span className="material-symbols-outlined" style={{ color: 'var(--primary)' }}>database</span>
             <h3 style={{ fontWeight: 700, fontSize: '18px', margin: 0 }}>Manajemen Database</h3>
@@ -4047,10 +4888,10 @@ function SettingsView({ user, onProfileUpdate }: { user: User, onProfileUpdate: 
               </p>
             </div>
           </div>
-        </section>
+        </section >
 
         {/* === 4. Tentang Aplikasi === */}
-        <section style={sectionStyle}>
+        < section style={sectionStyle} >
           <div style={sectionHeaderStyle}>
             <span className="material-symbols-outlined" style={{ color: 'var(--primary)' }}>info</span>
             <h3 style={{ fontWeight: 700, fontSize: '18px', margin: 0 }}>Tentang Aplikasi</h3>
@@ -4128,89 +4969,91 @@ function SettingsView({ user, onProfileUpdate }: { user: User, onProfileUpdate: 
             <p style={{ margin: 0 }}>&copy; 2024 LibAdmin Software Solution.</p>
             <p style={{ margin: 0 }}>SMA Persada Bunda</p>
           </div>
-        </section>
-      </div>
+        </section >
+      </div >
 
       {/* Password Change Modal */}
-      {showPasswordModal && (
-        <div className="modal-overlay" style={{ zIndex: 1100 }}>
-          <div className="modal-content" style={{
-            maxWidth: '480px',
-            backgroundColor: 'white',
-            borderRadius: '16px',
-            overflow: 'hidden'
-          }}>
-            <div style={{
-              padding: '20px 24px',
-              borderBottom: '1px solid #e2e8f0',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between'
+      {
+        showPasswordModal && (
+          <div className="modal-overlay" style={{ zIndex: 1100 }}>
+            <div className="modal-content" style={{
+              maxWidth: '480px',
+              backgroundColor: 'white',
+              borderRadius: '16px',
+              overflow: 'hidden'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ backgroundColor: 'rgba(19, 127, 236, 0.1)', padding: '8px', borderRadius: '8px' }}>
-                  <span className="material-symbols-outlined" style={{ color: 'var(--primary)', fontSize: '20px' }}>lock_reset</span>
+              <div style={{
+                padding: '20px 24px',
+                borderBottom: '1px solid #e2e8f0',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ backgroundColor: 'rgba(19, 127, 236, 0.1)', padding: '8px', borderRadius: '8px' }}>
+                    <span className="material-symbols-outlined" style={{ color: 'var(--primary)', fontSize: '20px' }}>lock_reset</span>
+                  </div>
+                  <h2 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700, color: '#1f2937' }}>Ganti Kata Sandi</h2>
                 </div>
-                <h2 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700, color: '#1f2937' }}>Ganti Kata Sandi</h2>
+                <button
+                  onClick={() => setShowPasswordModal(false)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}
+                >
+                  <span className="material-symbols-outlined">close</span>
+                </button>
               </div>
-              <button
-                onClick={() => setShowPasswordModal(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}
-              >
-                <span className="material-symbols-outlined">close</span>
-              </button>
-            </div>
-            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>Kata Sandi Lama</label>
-                <input
-                  type="password"
-                  value={oldPassword}
-                  onChange={(e) => setOldPassword(e.target.value)}
-                  placeholder="Masukkan kata sandi lama"
-                  style={{ padding: '10px 14px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '14px', outline: 'none' }}
-                />
+              <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>Kata Sandi Lama</label>
+                  <input
+                    type="password"
+                    value={oldPassword}
+                    onChange={(e) => setOldPassword(e.target.value)}
+                    placeholder="Masukkan kata sandi lama"
+                    style={{ padding: '10px 14px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '14px', outline: 'none' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>Kata Sandi Baru</label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Masukkan kata sandi baru"
+                    style={{ padding: '10px 14px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '14px', outline: 'none' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>Konfirmasi Kata Sandi Baru</label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Ulangi kata sandi baru"
+                    style={{ padding: '10px 14px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '14px', outline: 'none' }}
+                  />
+                </div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>Kata Sandi Baru</label>
-                <input
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Masukkan kata sandi baru"
-                  style={{ padding: '10px 14px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '14px', outline: 'none' }}
-                />
+              <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button
+                  onClick={() => setShowPasswordModal(false)}
+                  className="btn-white"
+                  style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 500, border: '1px solid #d1d5db' }}
+                >Batal</button>
+                <button
+                  onClick={handleChangePassword}
+                  className="btn-primary"
+                  style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>check</span>
+                  Ubah Kata Sandi
+                </button>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 600, color: '#374151' }}>Konfirmasi Kata Sandi Baru</label>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Ulangi kata sandi baru"
-                  style={{ padding: '10px 14px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '14px', outline: 'none' }}
-                />
-              </div>
-            </div>
-            <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-              <button
-                onClick={() => setShowPasswordModal(false)}
-                className="btn-white"
-                style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 500, border: '1px solid #d1d5db' }}
-              >Batal</button>
-              <button
-                onClick={handleChangePassword}
-                className="btn-primary"
-                style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>check</span>
-                Ubah Kata Sandi
-              </button>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   );
 }
 /* eslint-enable jsx-a11y/no-inline-styles */

@@ -1,4 +1,4 @@
-use crate::models::{Book, Loan, LoanWithDetails, Member, NewMember, User};
+use crate::models::{Book, FineWithDetails, Loan, LoanWithDetails, Member, NewMember, User};
 use chrono::{Duration, Utc};
 use sqlx::SqlitePool;
 use tauri::State;
@@ -13,6 +13,21 @@ pub async fn get_books(pool: State<'_, SqlitePool>) -> Result<Vec<Book>, String>
 #[tauri::command]
 pub async fn add_book(pool: State<'_, SqlitePool>, book: Book) -> Result<i64, String> {
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+
+    // Check if ISBN already exists
+    let existing_id: Option<i64> =
+        sqlx::query_scalar("SELECT id FROM books WHERE isbn = ? AND deleted_at IS NULL")
+            .bind(&book.isbn)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+
+    if existing_id.is_some() {
+        return Err(format!(
+            "Buku dengan ISBN '{}' sudah ada dalam sistem",
+            book.isbn
+        ));
+    }
 
     let res = sqlx::query("INSERT INTO books (title, author, isbn, category, publisher, published_year, rack_location, total_copy, available_copy, cover, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
         .bind(book.title)
@@ -203,7 +218,12 @@ pub async fn borrow_book(
 }
 
 #[tauri::command]
-pub async fn return_book(pool: State<'_, SqlitePool>, loan_id: i64) -> Result<(), String> {
+pub async fn return_book(
+    pool: State<'_, SqlitePool>,
+    loan_id: i64,
+    book_condition: String,
+    damage_category: Option<String>,
+) -> Result<(), String> {
     let mut tx = pool
         .begin()
         .await
@@ -221,8 +241,71 @@ pub async fn return_book(pool: State<'_, SqlitePool>, loan_id: i64) -> Result<()
 
     let return_date = Utc::now();
 
-    sqlx::query("UPDATE loans SET return_date = ?, status = 'returned' WHERE id = ?")
+    // Check for late fine
+    if return_date > loan.due_date {
+        let diff = return_date - loan.due_date;
+        let days_late = diff.num_days();
+
+        if days_late > 0 {
+            // Get fine rate from settings
+            let fine_rate_str: String =
+                sqlx::query_scalar("SELECT value FROM settings WHERE key = 'fine_late_per_day'")
+                    .fetch_one(&mut *tx)
+                    .await
+                    .unwrap_or_else(|_| "1000".to_string());
+
+            let fine_rate = fine_rate_str.parse::<i64>().unwrap_or(1000);
+            let total_fine = days_late * fine_rate;
+
+            if total_fine > 0 {
+                sqlx::query("INSERT INTO fines (loan_id, amount, fine_type, status) VALUES (?, ?, 'Late', 'Unpaid')")
+                    .bind(loan_id)
+                    .bind(total_fine)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(|e| format!("Failed to create late fine record: {}", e))?;
+            }
+        }
+    }
+
+    // Check for damage fine
+    if book_condition == "Rusak" {
+        if let Some(category) = &damage_category {
+            let setting_key = match category.as_str() {
+                "Ringan" => "fine_damage_light",
+                "Sedang" => "fine_damage_medium",
+                "Berat" => "fine_damage_heavy",
+                _ => "",
+            };
+
+            if !setting_key.is_empty() {
+                let fine_amount_str: String =
+                    sqlx::query_scalar("SELECT value FROM settings WHERE key = ?")
+                        .bind(setting_key)
+                        .fetch_one(&mut *tx)
+                        .await
+                        .unwrap_or_else(|_| "0".to_string());
+
+                let fine_amount = fine_amount_str.parse::<i64>().unwrap_or(0);
+                let fine_type = format!("Damage {}", category);
+
+                if fine_amount >= 0 {
+                    sqlx::query("INSERT INTO fines (loan_id, amount, fine_type, status) VALUES (?, ?, ?, 'Unpaid')")
+                        .bind(loan_id)
+                        .bind(fine_amount)
+                        .bind(fine_type)
+                        .execute(&mut *tx)
+                        .await
+                        .map_err(|e| format!("Failed to create damage fine record: {}", e))?;
+                }
+            }
+        }
+    }
+
+    sqlx::query("UPDATE loans SET return_date = ?, status = 'returned', book_condition = ?, damage_category = ? WHERE id = ?")
         .bind(return_date)
+        .bind(&book_condition)
+        .bind(&damage_category)
         .bind(loan_id)
         .execute(&mut *tx)
         .await
@@ -464,7 +547,7 @@ pub async fn login(
     password: String,
 ) -> Result<User, String> {
     let user = sqlx::query_as::<sqlx::Sqlite, User>(
-        "SELECT id, username, name, role FROM users WHERE username = ? AND password = ?",
+        "SELECT id, username, name, role, avatar FROM users WHERE username = ? AND password = ?",
     )
     .bind(username)
     .bind(password)
@@ -874,4 +957,84 @@ pub async fn get_book_borrowers(
     .map_err(|e| e.to_string())?;
 
     Ok(loans)
+}
+
+#[tauri::command]
+pub async fn get_fines(pool: State<'_, SqlitePool>) -> Result<Vec<FineWithDetails>, String> {
+    let sql = r#"
+        SELECT 
+            f.id, f.loan_id, l.member_id,
+            m.name as member_name, m.member_code, m.kelas as member_kelas,
+            b.title as book_title,
+            l.loan_date, l.due_date, l.return_date,
+            f.amount, f.fine_type, f.status, f.paid_at
+        FROM fines f
+        JOIN loans l ON f.loan_id = l.id
+        JOIN members m ON l.member_id = m.id
+        JOIN books b ON l.book_id = b.id
+        ORDER BY f.status ASC, f.created_at DESC
+    "#;
+
+    sqlx::query_as::<_, FineWithDetails>(sql)
+        .fetch_all(&*pool)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn pay_fine(pool: State<'_, SqlitePool>, fine_id: i64) -> Result<(), String> {
+    sqlx::query("UPDATE fines SET status = 'Paid', paid_at = CURRENT_TIMESTAMP WHERE id = ?")
+        .bind(fine_id)
+        .execute(&*pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn create_fine(
+    pool: State<'_, SqlitePool>,
+    loan_id: i64,
+    amount: i64,
+    fine_type: String,
+) -> Result<i64, String> {
+    let res = sqlx::query(
+        "INSERT INTO fines (loan_id, amount, fine_type, status) VALUES (?, ?, ?, 'Unpaid')",
+    )
+    .bind(loan_id)
+    .bind(amount)
+    .bind(fine_type)
+    .execute(&*pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(res.last_insert_rowid())
+}
+
+#[tauri::command]
+pub async fn get_fines_by_member(
+    pool: State<'_, SqlitePool>,
+    member_id: i64,
+) -> Result<Vec<FineWithDetails>, String> {
+    let sql = r#"
+        SELECT 
+            f.id, f.loan_id, l.member_id,
+            m.name as member_name, m.member_code, m.kelas as member_kelas,
+            b.title as book_title,
+            l.loan_date, l.due_date, l.return_date,
+            f.amount, f.fine_type, f.status, f.paid_at
+        FROM fines f
+        JOIN loans l ON f.loan_id = l.id
+        JOIN members m ON l.member_id = m.id
+        JOIN books b ON l.book_id = b.id
+        WHERE m.id = ?
+        ORDER BY f.status ASC, f.created_at DESC
+    "#;
+
+    sqlx::query_as::<_, FineWithDetails>(sql)
+        .bind(member_id)
+        .fetch_all(&*pool)
+        .await
+        .map_err(|e| e.to_string())
 }
