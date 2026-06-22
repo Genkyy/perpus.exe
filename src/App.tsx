@@ -168,7 +168,7 @@ function App() {
           </div>
           <div className="logo-text">
             <h1>LibAdmin</h1>
-            <p>SMA Persada Bunda</p>
+            <p>Digital Library</p>
           </div>
         </div>
 
@@ -1384,8 +1384,8 @@ function FinesView({ setView }: { setView: (v: string) => void }) {
 }
 
 function LoginView({ onLogin }: { onLogin: (u: User) => void }) {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("admin");
+  const [password, setPassword] = useState("admin123");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -1494,6 +1494,10 @@ function LoginView({ onLogin }: { onLogin: (u: User) => void }) {
                   </>
                 )}
               </button>
+              
+              <p style={{ marginTop: '16px', textAlign: 'center', fontSize: '0.875rem', color: '#64748b', fontWeight: 500, backgroundColor: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+                💡 <b>Mode Demo:</b> Tinggal tekan tombol di atas untuk langsung masuk.
+              </p>
             </form>
 
             <footer style={{ marginTop: '48px', paddingTop: '32px', borderTop: '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
@@ -4966,8 +4970,8 @@ function SettingsView({ user, onProfileUpdate }: { user: User, onProfileUpdate: 
             fontSize: '10px',
             color: '#94a3b8'
           }}>
-            <p style={{ margin: 0 }}>&copy; 2024 LibAdmin Software Solution.</p>
-            <p style={{ margin: 0 }}>SMA Persada Bunda</p>
+            <p style={{ margin: 0 }}>&copy; 2026 Kdev.</p>
+            <p style={{ margin: 0 }}>Digital Library</p>
           </div>
         </section >
       </div >
